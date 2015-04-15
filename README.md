@@ -5,7 +5,7 @@ Organize, tag and search my library.
  * A database is used to store the information, and a repository folder is used to hold the library's files.
  * The database can be set by the user, but if it not set, it is assumed to be the file 'tag.db' within the set repository.
  * ./tag.py -repo /foo/bar -add /Downloads/paper.pdf -tags "math,geom,[euclid]"
-  * /Downloads/paper.pdf is copied to /foo/bar.pdf and tagged with the three supplied tags
+  * /Downloads/paper.pdf is copied to /foo/bar/paper.pdf and tagged with the three supplied tags
  * ./tag.py -repo /foo/bar -find geom
   * Prints a list of all files tagged 'geom' 
  * ./tag.py -repo /foo/bar -name linear
