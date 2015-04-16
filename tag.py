@@ -716,7 +716,9 @@ def main():
 		ltags = largv_get(['-tags'], None)
 		if (ltags is not None):
 			ltags = [x.strip() for x in ltags.split(',')]
-		jtags = json.loads( largv_get(['-jtags'], None))
+		jtags = None
+		if (largv_get(['-jtags'], '') != ''):
+			json.loads( largv_get(['-jtags'], ''))
 		entry = None
 		conn = dbStartSession(g_dbpath); entry = tagAdd(conn, fpath, ltags, jtags); dbEndSession(conn);
 		if (entry is not None):
