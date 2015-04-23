@@ -13,6 +13,7 @@ import time
 import termios
 import fcntl
 import copy
+import subprocess
 
 # synonym: (lin-alg, l-lag)
 # search: lin-alg:lvl-0 will match l-alg:(eigen, lvl-0)
@@ -153,6 +154,13 @@ def largv_geti(i, dflt):
 		return dflt
 	return largv[i]
 
+def runUnpiped(args):
+	subprocess.Popen(args)
+
+def runPiped(args):
+	proc = subprocess.Popen(args, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+	return proc.communicate()
+
 gPrintCol = [ 'default', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'  ]
 gPrintColCode = [ "\x1B[0m", "\x1B[31m", "\x1B[32m", "\x1B[33m", "\x1B[34m", "\x1B[35m", "\x1B[36m", "\x1B[37m"  ]
 gAltCols = [ gPrintCol.index(x) for x in ['default', 'yellow'] ]
@@ -239,7 +247,7 @@ def createEntry(fpath, tags):
 	fname = makeCleanFilename(fpath)
 	name,ext = os.path.splitext(fname)
 	hashid = genFileMD5Str(fpath, fname)
-	return { 'hashid':hashid, 'fname':fname, 'name':name, 'tags':tags, 'ts':datetime.datetime.now() }
+	return { 'hashid':hashid, 'fname':fname, 'name':name, 'tags':tags, 'ts':datetime.datetime.now(), 'extra':'' }
 
 def dbBootstrap(conn):
 	conn.execute('CREATE TABLE file_entries(hashid TEXT PRIMARY KEY, fname TEXT, name TEXT, tags TEXT, ts TIMESTAMP)')
@@ -275,6 +283,7 @@ def dbUpgrade(conn):
 	return 0
 
 def dbAddEntry(conn, entry):
+	entry['tags'] = listToTags(entry['tags'])
 	tag_str = json.dumps( entry['tags'] )
 	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra']) ) )
 	conn.commit()
@@ -304,7 +313,7 @@ def dbUpdateEntry(conn, entry):
 
 def dbRecToEntryIndexed(rec):
 	rec_extra = rec[5] if rec[5] is not None else ''
-	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]), 'tags':json.loads(rec[3]), 'ts':rec[4], 'extra':rec_extra.split(',') }
+	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]), 'tags':listToTags(json.loads(rec[3])), 'ts':rec[4], 'extra':rec_extra.split(',') }
 	return entry
 
 def dbGetEntries(conn):
@@ -330,6 +339,17 @@ def dbGetEntryByHash(conn, hashid):
 
 def flattags(tags):
 	return tags.keys()
+
+def listToTags(ltags):
+	if isinstance(ltags, list):
+		dtags = {}
+		for t in ltags:
+			dtags[t] = ''
+		return dtags
+	elif isinstance(ltags, dict):
+		return ltags
+	else:
+		return listToTags([ltags])
 
 def printEntry(entry, nice = True):
 	if nice:
@@ -435,9 +455,10 @@ def addFile(sess, conn, fpath, tags, copy):
 
 def addEntry(sess, conn, fpath, entry, copy):
 	def addIgnored(sess, key, fpath):
-		if (key not in sess):
-			sess[key] = []
-		sess[key].append(fpath)
+		if (sess is not None):
+			if (key not in sess):
+				sess[key] = []
+			sess[key].append(fpath)
 
 	if (g_repo is not None):
 		if (not os.path.isdir(g_repo)):
@@ -473,6 +494,11 @@ def listAll(conn):
 
 
 def enter_assisted_input():
+
+	def viewEntry(entry):
+		# http://apple.stackexchange.com/questions/35189/is-there-a-way-to-minimize-open-windows-from-the-command-line-in-os-x-lion
+		# http://macscripter.net/viewtopic.php?id=22030
+		runUnpiped(['open', '-a', 'Preview', os.path.join(g_repo, entry['fname'])])
 
 	def filterEntries(entries, filters):
 		filtered = []
@@ -535,11 +561,22 @@ def enter_assisted_input():
 				filter = {'type':'tag', 'pat':tag}
 				filters.append(filter)
 				entries.append( sortEntries( filterEntries(entries[-1], [filter]) ) )
+		elif (cmd == 'cn'):
+			if (len(input_splt) == 2):
+				tag = input_splt[1]
+				filter = {'type':'name', 'pat':tag}
+				filters.append(filter)
+				entries.append( sortEntries( filterEntries(entries[-1], [filter]) ) )
 		elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
 			if (len(input_splt) == 2):
 				ei = int(input_splt[1])
 				entry = entries[-1][ei]
 				editUpdateEntry(conn, entry, cmd == 'e' or cmd == 'en', cmd == 'e' or cmd == 'et')
+		elif (cmd == 'o' or cmd == 'read' or cmd == 'view'):
+			if (len(input_splt) == 2):
+				ei = int(input_splt[1])
+				entry = entries[-1][ei]
+				viewEntry(entry)
 		elif (cmd == 'cleanup'):
 			centries = [x for x in entries[-1] if ('c' not in x['extra']) ]
 			print 'There are {} entries to clean.'.format(len(centries))
@@ -614,11 +651,22 @@ def matchesRe(name, rec):
 		matches1 = matches1 + [ x.strip() for x in y.split(',') ]
 	return matches1
 
+def extractTagsFromFileName(fname):
+	p1, p2 = tagRe()
+	ltags1 = matchesRe(fname, p1); ltags2 = matchesRe(fname, p2);
+	tags = {}
+	for ltag in ltags1:
+		tags[ltag] = ''
+	for ltag in ltags2:
+		tags['[{}]'.format(ltag).lower()] = ''
+	fname_, fext = os.path.splitext(fname)
+	tags[fext] = ''
+	return tags
+
 def tagImport(conn, ipath, updating):
 	if (len(ipath) == 0):
 		return
 	addFileSess = {}
-	p1, p2 = tagRe()
 	for dirName, subdirList, fileList in os.walk(ipath):
 		dirNameTail, dirNameHead = os.path.split(dirName)
 		if (dirNameHead.startswith('.') == False and dirNameHead.startswith('_') == False):
@@ -626,13 +674,7 @@ def tagImport(conn, ipath, updating):
 				fname_, fext = os.path.splitext(fname)
 				if (fname.startswith('.') == False and fext.lower() in ['.pdf', '.djvu', '.txt', '.md', '.jpg', '.jpeg', '.png', '.missing']):
 					fpath = os.path.join(os.path.join(ipath, dirName), fname)
-					ltags1 = matchesRe(fpath, p1); ltags2 = matchesRe(fpath, p2);
-					tags = {}
-					for ltag in ltags1:
-						tags[ltag] = ''
-					for ltag in ltags2:
-						tags['[{}]'.format(ltag).lower()] = ''
-					tags[fext] = ''
+					tags = extractTagsFromFileName(fpath)
 					if (os.path.getsize(fpath) == 0 and fext != '.missing'):
 						if (updating == False):
 							print_col('cyan'); print fname; print_col('default');
@@ -653,6 +695,54 @@ def tagImport(conn, ipath, updating):
 			if (updating == False):
 				print_col('cyan'); print '{}/*'.format(dirName); print_col('default');
 
+def printAndChoose(list, postindex = False, forceChoose = False):
+	if (len(list) == 0): return -1
+	if (len(list) == 1 and forceChoose == False): return 0
+	for i in range(len(list)):
+		print_coli(gAltCols[i % len(gAltCols)])
+		if postindex:
+			print '. {} ({})'.format(list[i], i+1)
+		else:
+			print '{}. {}'.format(i+1, list[i])
+	print_col('default')
+	print '>',
+	input_str = raw_input()
+	choices = []
+	if ('-' in input_str):
+		list = input_str.split('-')
+		choices = range(int(list[0]), int(list[1])+1)
+	elif (',' in input_str):
+		choices = [int(x) for x in input_str.split(',')]
+	else:
+		if len(input_str):
+			choices.append(int(input_str))
+	choices = [i-1 for i in choices]
+	return choices
+
+def scanImport(conn, spath, time):
+	if os.name == 'nt':
+		# http://blogs.technet.com/b/heyscriptingguy/archive/2014/02/07/use-powershell-to-find-files-that-have-not-been-accessed.aspx
+		print_col('red'); print 'Not supported on windows yet'; print_col('default');
+	exts = ['.pdf','.djvu']
+	args = ['find', '{}'.format(spath), '(']
+	for e in exts:
+		args.extend(['-name', '*{}'.format(e), '-o'])
+	args.pop()
+	args.extend([')', '-ctime', '-{}'.format(time)])
+	(out, err) = runPiped(args)
+	if (len(err)):
+		print_col('red'); print err; print_col('default');
+		return
+	lines = [x.strip() for x in out.split('\n') if (len(x.strip()))]
+	chosen = printAndChoose(lines, False, True)
+	for c in chosen:
+		fpath = lines[c]
+		tags = extractTagsFromFileName(fpath)
+		if (len(tags) == 0):
+			tags['scan'] = ''
+		entry = addFile(None, conn, fpath, tags, True)
+		if (entry is not None):
+			editUpdateEntry(conn, entry, True, True)
 
 def tagCleanFromNames(conn):
 	def tagCleanFromString(entry, key):
@@ -736,6 +826,10 @@ def main():
 		ipath = largv_get(['-import'], '')
 		updating = largv_has(['-u', '-update'])
 		conn = dbStartSession(g_dbpath); tagImport(conn, ipath, updating); dbEndSession(conn);
+	elif (largv_get(['-scan'], None) is not None):
+		spath = largv_get(['-scan'], None)
+		time = largv_get(['-time'], '1h')
+		conn = dbStartSession(g_dbpath); scanImport(conn, spath, time); dbEndSession(conn);
 	elif largv_has(['-test_normalize']):
 		print normalizeName(largv_get(['-test_normalize'], ''))
 	elif largv_has(['-test_clean']):
