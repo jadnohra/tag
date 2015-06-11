@@ -379,7 +379,7 @@ def printEntry(entry, nice = True):
 	else:
 		print entry['hashid'], entry['fname'], entry['ts'], entry['name'], entry['tags']
 
-def editEntry(entry, ename = True, etags = True):
+def editEntry(entry, ename = True, etags = True, nameFirst = True):
 	def finalizeName(entry, name):
 		if (name != entry['name']):
 			print name
@@ -400,7 +400,11 @@ def editEntry(entry, ename = True, etags = True):
 		if (ename and etags):
 			print entry['name']
 			print flattags(entry['tags'])
-			entry_str = u'{{{}}}{{{}}}'.format(entry['name'], ','.join(flattags(entry['tags'])))
+			fmt_str = u'<{}><{}>'
+			if (nameFirst):
+				entry_str = fmt_str.format(entry['name'], ','.join(flattags(entry['tags'])))
+			else:
+				entry_str = fmt_str.format(','.join(flattags(entry['tags'])), entry['name'])
 		elif (ename):
 			entry_str = entry['name']
 		elif (etags):
@@ -451,11 +455,11 @@ def editEntry(entry, ename = True, etags = True):
 		print ''
 
 	if (ename and etags):
-		re_pat = re.compile(ur'\{([^\}]*)\}')
+		re_pat = re.compile(ur'\<([^\>]*)\>')
 		re_mat = re.findall(re_pat, entry_str)
 		if (len(re_mat) == 2):
-			modn = finalizeName(entry, re_mat[0])
-			modt = finalizeTags(entry, re_mat[1])
+			modn = finalizeName(entry, re_mat[0 if nameFirst else 1])
+			modt = finalizeTags(entry, re_mat[1 if nameFirst else 0])
 			return (modn or modt)
 		return False
 	elif (ename):
@@ -465,8 +469,8 @@ def editEntry(entry, ename = True, etags = True):
 	return False
 
 
-def editUpdateEntry(conn, entry, ename, etags):
-	modded = editEntry(entry, ename, etags)
+def editUpdateEntry(conn, entry, ename, etags, nameFirst = True):
+	modded = editEntry(entry, ename, etags, nameFirst)
 	if (modded):
 		dbUpdateEntry(conn, entry)
 		entry = dbGetEntryByHash(conn, entry['hashid'])
@@ -763,7 +767,7 @@ def enter_assisted_input():
 			entry = entries[-1][ei]
 			print_col('red'); printEntry(entry); print_col('default');
 			dbRemoveEntry(conn, entry)
-			tpath = os.path.join(unistr(g_repo), unistr(e['fname']))
+			tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
 			os.remove(tpath)
 
 
@@ -910,7 +914,7 @@ def scanImport(conn, spath, time):
 			tags['scan'] = ''
 		entry = addFile(None, conn, fpath, tags, True)
 		if (entry is not None):
-			editUpdateEntry(conn, entry, True, True)
+			editUpdateEntry(conn, entry, True, True, False)
 		else:
 			entry = dbGetEntryByHash(conn, createFileHash(fpath))
 			print_col('yellow'); printEntry(entry); print_col('default');
