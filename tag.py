@@ -586,19 +586,41 @@ def enter_assisted_input():
 		lines = [x.strip() for x in out.split('\n') if (len(x.strip()))]
 		return (elines, lines)
 
-	def textSearchPrint(ei, e, elines, lines):
-		def showEntry(ei, e):
-			print ''
-			print('{}. '.format(ei+1)),
-			printEntry(e)
+	def textLengthEntry(e):
+		if (not checkPlatMac()):
+			return
+		tpath = os.path.join(unistr(g_repo), unistr(e['fname']))
+		fname_, fext = os.path.splitext(e['fname']); fext = fext.lower();
+		if (fext.lower() == '.pdf'):
+			args = [unistr('pdftotext'), unistr('\"{}\"').format(tpath), '-', '|', 'wc', '-w']
+		elif (fext.lower() == '.djvu'):
+			args = [unistr('djvutxt'), unistr('\"{}\"').format(tpath), '|', 'wc', '-w']
+		else:
+			return ([], 0)
+		#print unistr(' '.join(args))
+		(out, err) = runPipedShell(unistr(' '.join(args)))
+		elines = []; lines = [];
+		if (len(err)):
+			elines = [' ' + x.strip() for x in err.split('\n') if (len(x.strip()))]
+		count = int(out.strip())
+		return (elines, count)
 
-		if (len(elines)):
-			showEntry(ei, e)
-			ulines = []
-			for el in elines:
-				if el not in ulines:
-					ulines.append(el)
-			print_col('red'); print '\n'.join(ulines); print_col('default');
+	def showEntry(ei, e):
+		print('\n{}. '.format(ei+1)),
+		printEntry(e)
+
+	def printErrLines(ei, e, elines):
+		if (len(elines) == 0):
+			return
+		showEntry(ei, e)
+		ulines = []
+		for el in elines:
+			if el not in ulines:
+				ulines.append(el)
+		print_col('red'); print '\n'.join(ulines); print_col('default');
+
+	def textSearchPrint(ei, e, elines, lines):
+		printErrLines(ei, e, elines)
 		if (len(lines)):
 			if (len(elines) == 0):
 				showEntry(ei, e)
@@ -643,135 +665,153 @@ def enter_assisted_input():
 					ei = tinfo['entry_list'][i]
 					textSearchPrint(ei, entries[ei], tinfo['entry_errs'][i], tinfo['entry_lines'][i])
 
+	def listEntries(entries):
+		for ie in range(len(entries)):
+			print '{}. '.format(ie+1),
+			printEntry(entries[ie]);
+
 	conn = dbStartSession(g_dbpath)
 	filters, entries = reset(conn)
 	viewEntryHist = []
 
-	while True:
-		pats = [x['pat'] for x in filters]
-		print '/{} ({})>'.format('/'.join(pats), len(entries[-1])),
-		inp = raw_input()
-		input_splt = inp.split(' ')
-		cmd = input_splt[0]
+	try:
 
-		if (cmd == 'q'):
-			break
-		elif (cmd == 'r' or cmd == 'reset'):
-			filters, entries = reset(conn)
-		elif (cmd == 'ls' or cmd == 'l'):
-			for ie in range(len(entries[-1])):
-				print '{}. '.format(ie+1),
-				printEntry(entries[-1][ie]);
-		elif (cmd == 'tags' or cmd == 't'):
-			tags = {}
-			for e in entries[-1]:
-				etags = flattags(e['tags'])
-				for etag in etags:
-					tags[etag] = ''
-			tkeys = sorted(tags.keys())
-			for it in range(len(tkeys)):
-				print '{}, '.format(tkeys[it]),
-				if (it % 10 == 0 and it != 0):
-					print ''
-			print '\n{} tags\n'.format(len(tkeys))
-		elif ((cmd == 'cd' and len(input_splt) == 1)
-				or (cmd == 'cd' and input_splt[1] == '..')
-				or cmd == '..'
-				or cmd == 'cd..'):
-			if (len(filters)):
-				filters.pop(); entries.pop();
-		elif (cmd == 'cd'):
-			if (len(input_splt) == 2):
-				tag = input_splt[1]
-				filter = {'type':'tag', 'pat':tag}
-				newentries = sortEntries( filterEntries(entries[-1], [filter]) )
-				if (len(newentries)):
-					filters.append(filter)
-					entries.append( newentries )
-				else:
-					print ' empty...'
-		elif (cmd == 'cn'):
-			if (len(input_splt) == 2):
-				tag = input_splt[1]
-				filter = {'type':'name', 'pat':tag}
-				newentries = sortEntries( filterEntries(entries[-1], [filter]) )
-				if (len(newentries)):
-					filters.append(filter)
-					entries.append( newentries )
-				else:
-					print ' empty...'
-		elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
-			if (len(input_splt) == 2):
-				ei = int(input_splt[1])-1
-				entry = entries[-1][ei]
-				editUpdateEntry( conn, entry, cmd == 'e' or cmd == 'en', cmd == 'e' or cmd == 'et')
-		elif (cmd == 'o' or cmd == 'read' or cmd == 'view'):
-			if (len(input_splt) == 2):
-				ei = int(input_splt[1])-1
-				entry = entries[-1][ei]
-				viewEntryHist.append(entry)
-				viewEntry(entry)
-			else:
-				for e in viewEntryHist:
-					printEntry(entry)
-		elif (cmd == 'x' or cmd == 'close'):
-			entry = None
-			if (len(input_splt) == 2):
-				ei = int(input_splt[1])-1
-				entry = entries[-1][ei]
-			else:
-				if (len(viewEntryHist)):
-					entry = viewEntryHist.pop()
-			if (entry is not None):
-				closeViewEntry(entry)
-		elif (cmd == 'cleanup'):
-			centries = [x for x in entries[-1] if ('c' not in x['extra']) ]
-			print 'There are {} entries to clean.'.format(len(centries))
-			for ie in range(len(centries)):
-				print '{}. '.format(ie),
-				entry = centries[ie]
-				editUpdateEntry(conn, entry, True, True)
-				entry['extra'].append('c')
-				dbUpdateEntry(conn, entry)
-		elif (cmd == 'scan'):
-			spath = None if (g_lastscan is None) else g_lastscan[0]
-			time =  None if (g_lastscan is None) else g_lastscan[1]
-			if (len(input_splt) >= 2):
-				spath = input_splt[1]
-			if (len(input_splt) >= 3):
-				time = input_splt[2]
-			if (spath is not None):
-				scanImport(conn, spath, '1h' if time is None else time)
-			filters, entries = reset(conn)
-		elif (cmd == '+' or cmd == '-'):
-			if (len(input_splt) == 3):
-				ei = int(input_splt[1])-1
-				entry = entries[-1][ei]
-				ntags = input_splt[2].split(',')
-				etags = copy.deepcopy(entry['tags'])
-				for ntag in ntags:
-					if (cmd == '+'):
-						entry['tags'][ntag] = ''
+		while True:
+			pats = [x['pat'] for x in filters]
+			print '/{} ({})>'.format('/'.join(pats), len(entries[-1])),
+			inp = raw_input()
+			input_splt = inp.split(' ')
+			cmd = input_splt[0]
+
+			if (cmd == 'q'):
+				break
+			elif (cmd == 'r' or cmd == 'reset'):
+				filters, entries = reset(conn)
+			elif (cmd == 'ls' or cmd == 'l'):
+				listEntries( entries[-1] )
+			elif (cmd == 'tags' or cmd == 't'):
+				tags = {}
+				for e in entries[-1]:
+					etags = flattags(e['tags'])
+					for etag in etags:
+						tags[etag] = ''
+				tkeys = sorted(tags.keys())
+				for it in range(len(tkeys)):
+					print '{}, '.format(tkeys[it]),
+					if (it % 10 == 0 and it != 0):
+						print ''
+				print '\n{} tags\n'.format(len(tkeys))
+			elif ((cmd == 'cd' and len(input_splt) == 1)
+					or (cmd == 'cd' and input_splt[1] == '..')
+					or cmd == '..'
+					or cmd == '.'
+					or cmd == 'cd..'):
+				if (len(filters)):
+					filters.pop(); entries.pop();
+			elif (cmd == 'cd'):
+				if (len(input_splt) == 2):
+					tag = input_splt[1]
+					filter = {'type':'tag', 'pat':tag}
+					newentries = sortEntries( filterEntries(entries[-1], [filter]) )
+					if (len(newentries)):
+						filters.append(filter)
+						entries.append( newentries )
+						if (len( newentries ) <= 24):
+							listEntries( entries[-1] )
 					else:
-						if ntag in entry['tags']:
-							del entry['tags'][ntag]
-				modded = (etags != entry['tags'])
-				if (modded):
-					print_col('green'); printEntry(entry); print_col('default');
-		elif (cmd == 'f' or cmd == 'find'):
-			phrase = ' '.join(input_splt[1:])
-			nthreads = max(1, multiprocessing.cpu_count()-1)
-			textSearchEntries(entries[-1], phrase, nthreads)
-		elif (cmd == 'remove' or cmd == 'delete'):
-			ei = int(input_splt[1])-1
-			entry = entries[-1][ei]
-			print_col('red'); printEntry(entry); print_col('default');
-			dbRemoveEntry(conn, entry)
-			tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
-			os.remove(tpath)
+						print ' empty...'
+			elif (cmd == 'cn'):
+				if (len(input_splt) == 2):
+					tag = input_splt[1]
+					filter = {'type':'name', 'pat':tag}
+					newentries = sortEntries( filterEntries(entries[-1], [filter]) )
+					if (len(newentries)):
+						filters.append(filter)
+						entries.append( newentries )
+					else:
+						print ' empty...'
+			elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
+				if (len(input_splt) == 2):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+					editUpdateEntry( conn, entry, cmd == 'e' or cmd == 'en', cmd == 'e' or cmd == 'et')
+			elif (cmd == 'o' or cmd == 'read' or cmd == 'view'):
+				if (len(input_splt) == 2):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+					viewEntryHist.append(entry)
+					viewEntry(entry)
+				else:
+					for e in viewEntryHist:
+						printEntry(entry)
+			elif (cmd == 'x' or cmd == 'close'):
+				entry = None
+				if (len(input_splt) == 2):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+				else:
+					if (len(viewEntryHist)):
+						entry = viewEntryHist.pop()
+				if (entry is not None):
+					closeViewEntry(entry)
+			elif (cmd == 'cleanup'):
+				centries = [x for x in entries[-1] if ('c' not in x['extra']) ]
+				print 'There are {} entries to clean.'.format(len(centries))
+				for ie in range(len(centries)):
+					print '{}. '.format(ie),
+					entry = centries[ie]
+					editUpdateEntry(conn, entry, True, True)
+					entry['extra'].append('c')
+					dbUpdateEntry(conn, entry)
+			elif (cmd == 'scan'):
+				spath = None if (g_lastscan is None) else g_lastscan[0]
+				time =  None if (g_lastscan is None) else g_lastscan[1]
+				if (len(input_splt) >= 2):
+					spath = input_splt[1]
+				if (len(input_splt) >= 3):
+					time = input_splt[2]
+				if (spath is not None):
+					scanImport(conn, spath, '1h' if time is None else time)
+				filters, entries = reset(conn)
+			elif (cmd == '+' or cmd == '-'):
+				if (len(input_splt) == 3):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+					ntags = input_splt[2].split(',')
+					etags = copy.deepcopy(entry['tags'])
+					for ntag in ntags:
+						if (cmd == '+'):
+							entry['tags'][ntag] = ''
+						else:
+							if ntag in entry['tags']:
+								del entry['tags'][ntag]
+					modded = (etags != entry['tags'])
+					if (modded):
+						dbUpdateEntry(conn, entry)
+						print_col('green'); printEntry(entry); print_col('default');
+			elif (cmd == '#'):
+				if (len(input_splt) == 2):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+					(elines, count) = textLengthEntry(entry)
+					printErrLines(ei, entry, elines)
+					print_col('green'); print ' {} words'.format(count); print_col('default');
+			elif (cmd == 'f' or cmd == 'find'):
+				phrase = ' '.join(input_splt[1:])
+				nthreads = max(1, multiprocessing.cpu_count()-1)
+				textSearchEntries(entries[-1], phrase, nthreads)
+			elif (cmd == 'remove' or cmd == 'delete'):
+				ei = int(input_splt[1])-1
+				entry = entries[-1][ei]
+				print_col('red'); printEntry(entry); print_col('default');
+				dbRemoveEntry(conn, entry)
+				tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
+				os.remove(tpath)
 
+	except:
+		dbEndSession(conn)
+		raise e
 
-	dbEndSession(conn)
 	return 0
 
 def tagAdd(conn, fpath, ltags, jtags = None):
