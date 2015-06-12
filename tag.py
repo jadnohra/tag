@@ -605,6 +605,25 @@ def enter_assisted_input():
 		count = int(out.strip())
 		return (elines, count)
 
+	def textCountEntry(e,word):
+		if (not checkPlatMac()):
+			return
+		tpath = os.path.join(unistr(g_repo), unistr(e['fname']))
+		fname_, fext = os.path.splitext(e['fname']); fext = fext.lower();
+		if (fext.lower() == '.pdf'):
+			args = [unistr('pdftotext'), unistr('\"{}\"').format(tpath), '-', '|', 'grep', '-c', '-i', unistr('\"{}\"').format(unistr(word))]
+		elif (fext.lower() == '.djvu'):
+			args = [unistr('djvutxt'), unistr('\"{}\"').format(tpath), '|', 'grep', '-c', '-i', unistr('\"{}\"').format(unistr(word))]
+		else:
+			return ([], 0)
+		#print unistr(' '.join(args))
+		(out, err) = runPipedShell(unistr(' '.join(args)))
+		elines = []; lines = [];
+		if (len(err)):
+			elines = [' ' + x.strip() for x in err.split('\n') if (len(x.strip()))]
+		count = int(out.strip())
+		return (elines, count)
+
 	def showEntry(ei, e):
 		print('\n{}. '.format(ei+1)),
 		printEntry(e)
@@ -796,6 +815,13 @@ def enter_assisted_input():
 					(elines, count) = textLengthEntry(entry)
 					printErrLines(ei, entry, elines)
 					print_col('green'); print ' {} words'.format(count); print_col('default');
+			elif (cmd == 'figs'):
+				if (len(input_splt) == 2):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+					(elines, count) = textCountEntry(entry, 'figure')
+					printErrLines(ei, entry, elines)
+					print_col('green'); print ' ~{} figures'.format(count/2); print_col('default');		
 			elif (cmd == 'f' or cmd == 'find'):
 				phrase = ' '.join(input_splt[1:])
 				nthreads = max(1, multiprocessing.cpu_count()-1)
