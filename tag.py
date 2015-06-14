@@ -168,18 +168,20 @@ def runPipedShell(args):
 	proc = subprocess.Popen(args, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 	return proc.communicate()
 
-gPrintCol = [ 'default', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'  ]
-gPrintColCode = [ "\x1B[0m", "\x1B[31m", "\x1B[32m", "\x1B[33m", "\x1B[34m", "\x1B[35m", "\x1B[36m", "\x1B[37m"  ]
+gPrintCol = [ 'default', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'bdefault', 'bblack', 'bred', 'bgreen', 'byellow', 'bblue', 'bmagenta', 'bcyan', 'bwhite'  ]
+gPrintColCode = [ "\x1B[0m", "\x1B[30m", "\x1B[31m", "\x1B[32m", "\x1B[33m", "\x1B[34m", "\x1B[35m", "\x1B[36m", "\x1B[37m",
+"\x1B[49m", "\x1B[40m", "\x1B[41m", "\x1B[42m", "\x1B[43m", "\x1B[44m", "\x1B[45m", "\x1B[46m", "\x1B[47m", ]
 gAltCols = [ gPrintCol.index(x) for x in ['default', 'yellow'] ]
 
 def print_coli(coli):
 	coli = coli % len(gPrintCol)
 	code = gPrintColCode[coli]
-	print code,
-	print '\x1B[{}D'.format(len(code)-3),
+	sys.stdout.write(code)
+	#sys.stdout.write('\x1B[{}D'.format(len(code)-3))
 
 def print_col(col):
 	print_coli(gPrintCol.index(col))
+
 
 g_repo = None
 g_dbpath = None
@@ -371,11 +373,20 @@ def printList(lst, sep, col1, col2):
 	print_col('default')
 	print ''
 
-def printEntry(entry, nice = True):
-	if nice:
-		print unistr('[{}]').format(entry['name']),
-		printList(flattags(entry['tags']), ',', 'yellow', 'yellow')
-		#print_col('yellow'); print ','.join(flattags(entry['tags'])); print_col('default');
+def printEntry(entry, mode = 2):
+	if mode > 0:
+		if mode == 1:
+			print unistr('[{}]').format(entry['name']),
+			printList(flattags(entry['tags']), ',', 'yellow', 'yellow')
+			#print_col('yellow'); print ','.join(flattags(entry['tags'])); print_col('default');
+		else:
+			print unistr('[{}] ').format(entry['name']),
+			items = entry['tags'].keys()
+		 	for iti in range(len(items)):
+				print_col('bwhite'); print ' ',; print_col('bgreen');
+				print u' {} '.format(items[iti]),
+			print_col('bwhite'); print ' ',
+			print_col('bdefault'); print '';
 	else:
 		print entry['hashid'], entry['fname'], entry['ts'], entry['name'], entry['tags']
 
@@ -441,8 +452,10 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 					entry_str = entry_str[0:cpos-1] + entry_str[cpos:]
 					cpos = cpos-1
 			elif (len(inp)==1):
-				entry_str = entry_str[0:cpos] + ''.join(inp) + entry_str[cpos:]
-				cpos = cpos + 1
+				char = inp[0]
+				if (True and (ord(char) >= 32 and ord(char) <= 126)):
+					entry_str = entry_str[0:cpos] + ''.join(inp) + entry_str[cpos:]
+					cpos = cpos + 1
 			else:
 				print inp
 	except:
@@ -468,13 +481,119 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 		return finalizeTags(entry, entry_str)
 	return False
 
+def editEntry2(entry, ename = True, etags = True, nameFirst = True):
+	def finalizeName(entry, name):
+		if (name != entry['name']):
+			print name
+			entry['name'] = name
+			return True
+		return False
+	def finalizeTags(entry, tag_str):
+		tagsa = [x.strip() for x in tag_str.split(',')]
+		tags = {}
+		for tag in tagsa:
+			tags[tag] = ''
+		if (entry['tags'] != tags):
+			print flattags(tags)
+			entry['tags'] = tags
+			return True
+		return False
+	def cprint(str, lpos):
+		print str,;	return lpos + len(str);
+	try:
+		ipos = 0
+		lipos = -1
+		epos = -1
+		items = [ {'str':'{}'.format(entry['name'])} ]
+		items.extend([{'str':x} for x in entry['tags'].keys() ] )
+		prefix = ' : '
+		while 1:
+			lpos = 0
+			# http://www.termsys.demon.co.uk/vtansi.htm
+			sys.stdout.write('\x1B[2K') # Erase line
+			sys.stdout.write('\r')
+			lpos = cprint('{}'.format(prefix), lpos)
+			for iti in range(len(items)):
+				print_col('bwhite'); lpos = cprint(' ', lpos);
+				if (iti == ipos):
+					if (epos == -1):
+						print_col('bblue' if iti>0 else 'bblue')
+					else:
+						print_col('bred' if iti>0 else 'bred')
+				else:
+					print_col('bgreen' if iti>0 else 'bcyan')
+				items[iti]['lpos'] = lpos+1
+				lpos = cprint(u' {} '.format(items[iti]['str']), lpos)
+
+			print_col('bdefault')
+			sys.stdout.write('\r')
+			if (epos != -1):
+				sys.stdout.write('\r\x1B[{}C'.format(items[ipos]['lpos'] + epos))
+			inp = getch()
+
+			if (epos == -1):
+				if (len(inp) == 1 and ord(inp[0]) == 27):
+					break
+				elif ('\n' in inp):
+					if (lipos == ipos):
+						break
+					else:
+						epos = 0
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'C']):
+					ipos = min(ipos + 1, len(items)-1)
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'D']):
+					ipos = max(ipos - 1, 0)
+				elif (len(inp)==1):
+					char = inp[0]
+					if (True and (ord(char) >= 32 and ord(char) <= 126)):
+						ipos = ipos
+					elif (ord(char) == 9):
+						ipos = min(ipos + 1, len(items)-1)
+					#else:
+					#	print 'xxx'; print 'xxx'
+			else:
+				edit_str = items[ipos]['str']
+				if (len(inp) == 1 and ord(inp[0]) == 27):
+					epos = -1
+					lipos = ipos
+				elif ('\n' in inp):
+					epos = -1
+					lipos = ipos
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'C']):
+					epos = min(epos + 1, len(edit_str))
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'D']):
+					epos = max(epos - 1, 0)
+				elif (len(inp) >= 1 and inp[0] == '\x7F'):
+					if (epos > 0):
+						edit_str = edit_str[0:epos-1] + edit_str[epos:]
+						epos = epos-1
+				elif (len(inp)==1):
+					char = inp[0]
+					if ((ord(char) >= 32 and ord(char) <= 126)):
+						edit_str = edit_str[0:epos] + ''.join(inp) + edit_str[epos:]
+						epos = epos + 1
+				items[ipos]['str'] = edit_str
+			#else:
+			#	print inp,
+
+	except:
+		traceback.print_exc()
+		e = sys.exc_info()[0]
+		raise e
+		return False
+	finally:
+		print_col('default')
+		print ''
+
+	return False
+
 
 def editUpdateEntry(conn, entry, ename, etags, nameFirst = True):
-	modded = editEntry(entry, ename, etags, nameFirst)
+	modded = editEntry2(entry, ename, etags, nameFirst)
 	if (modded):
 		dbUpdateEntry(conn, entry)
 		entry = dbGetEntryByHash(conn, entry['hashid'])
-		print_col('green'); printEntry(entry); print_col('default');
+		print_col('green'); printEntry(entry, 1); print_col('default');
 
 
 def addFile(sess, conn, fpath, tags, copy):
@@ -807,7 +926,7 @@ def enter_assisted_input():
 					modded = (etags != entry['tags'])
 					if (modded):
 						dbUpdateEntry(conn, entry)
-						print_col('green'); printEntry(entry); print_col('default');
+						print_col('green'); printEntry(entry, 1); print_col('default');
 			elif (cmd == '#'):
 				if (len(input_splt) == 2):
 					ei = int(input_splt[1])-1
@@ -821,7 +940,7 @@ def enter_assisted_input():
 					entry = entries[-1][ei]
 					(elines, count) = textCountEntry(entry, 'figure')
 					printErrLines(ei, entry, elines)
-					print_col('green'); print ' ~{} figures'.format(count/2); print_col('default');		
+					print_col('green'); print ' ~{} figures'.format(count/2); print_col('default');
 			elif (cmd == 'f' or cmd == 'find'):
 				phrase = ' '.join(input_splt[1:])
 				nthreads = max(1, multiprocessing.cpu_count()-1)
@@ -829,14 +948,14 @@ def enter_assisted_input():
 			elif (cmd == 'remove' or cmd == 'delete'):
 				ei = int(input_splt[1])-1
 				entry = entries[-1][ei]
-				print_col('red'); printEntry(entry); print_col('default');
+				print_col('red'); printEntry(entry, 1); print_col('default');
 				dbRemoveEntry(conn, entry)
 				tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
 				os.remove(tpath)
 
 	except:
 		dbEndSession(conn)
-		raise e
+		raise sys.exc_info()[0]
 
 	return 0
 
