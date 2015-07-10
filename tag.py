@@ -194,7 +194,8 @@ def unistr(str):
 	return str
 
 def matchTags(pat, tags):
-	if (isinstance(pat, str)):
+	#if (isinstance(pat, str)):
+	if (True):
 		for t in tags.keys():
 			if (t == pat):
 				return True
@@ -203,6 +204,36 @@ def matchTags(pat, tags):
 def matchName(pat, name):
 	if (pat.lower() in name.lower()):
 		return True
+	return False
+
+def fixupTimePat(pat):
+	pat = pat.strip()
+	if len(pat.strip()) == 0:
+		return 'today'
+	if (pat in ['today']):
+		return pat
+	if (True or '-' in pat or ' ' in pat):
+		pat_splt = pat.split('-') if '-' in pat else pat.split()
+		if len(pat_splt) == 1:
+			pat_splt.append(str(datetime.datetime.today().month))
+		if len(pat_splt) == 2:
+			pat_splt.append(str(datetime.datetime.today().year))
+		return '-'.join(pat_splt)
+	return ''
+
+def matchTime(pat, ts):
+	def asdate(d,m,y):
+		try:
+			return datetime.datetime(int(y), time.strptime(m,'%b').tm_mon, int(d)).date()
+		except:
+			return datetime.datetime(int(y), int(m), int(d)).date()
+	pat_splt = pat.split('-')
+	if (len(pat_splt) == 3):
+		return ts.date() == asdate(*pat_splt)
+	elif (len(pat_splt) == 6):
+		return ts.date() >= asdate(*pat_splt[:3]) and ts.date() >= asdate(*pat_splt[3:])
+	elif pat == 'today':
+		return ts.date() == datetime.datetime.today().date()
 	return False
 
 def genFileMD5Str(fpath, name):
@@ -293,7 +324,7 @@ def dbEndSession(conn):
 	conn.close()
 
 def dbUpgrade(conn):
-	#conn.execute("alter table file_entries add column 'extra' 'TEXT'")
+	#conn.execute("alter table file_entries add column 'open_count' 'INTEGER'")
 	#conn.commit()
 	return 0
 
@@ -328,7 +359,7 @@ def dbUpdateEntry(conn, entry):
 
 def dbRecToEntryIndexed(rec):
 	rec_extra = rec[5] if rec[5] is not None else ''
-	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]), 'tags':listToTags(json.loads(rec[3])), 'ts':rec[4], 'extra':rec_extra.split(',') }
+	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]), 'tags':listToTags(json.loads(rec[3])), 'ts':datetime.datetime.strptime(rec[4], "%Y-%m-%d %H:%M:%S.%f"), 'extra':rec_extra.split(',') }
 	return entry
 
 def dbGetEntries(conn):
@@ -373,8 +404,10 @@ def printList(lst, sep, col1, col2):
 	print_col('default')
 	print ''
 
-def printEntry(entry, mode = 2):
+def printEntry(entry, mode = 2, show_ts = False):
 	if mode > 0:
+		if (show_ts):
+			print '<{}>'.format(entry['ts'].strftime('%d-%b-%Y')),
 		if mode == 1:
 			print unistr('[{}]').format(entry['name']),
 			printList(flattags(entry['tags']), ',', 'yellow', 'yellow')
@@ -500,6 +533,10 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 		return False
 	def cprint(str, lpos):
 		print str,;	return lpos + len(str);
+
+	if True:
+		return editEntry(entry, ename, etags, nameFirst)
+
 	try:
 		ipos = 0
 		lipos = -1
@@ -673,18 +710,36 @@ def enter_assisted_input():
 						fpass = fpass and matchName(f['pat'], e['name'])
 					elif (f['type'] == 'tag'):
 						fpass = fpass and matchTags(f['pat'], e['tags'])
+					elif (f['type'] == 'time'):
+						fpass = fpass and matchTime(f['pat'], e['ts'])
 				else:
 					break
 			if (fpass):
 				filtered.append(e)
 		return filtered
 
-	def sortEntries(entries):
-		return sorted(entries, key = lambda x : (x['name']))
+	def matchAllTags(pat, entries):
+		tags = {}
+		for e in entries:
+			etags = flattags(e['tags'])
+			for etag in etags:
+				tags[etag] = ''
+		matches = []
+		tkeys = sorted(tags.keys())
+		for it in range(len(tkeys)):
+			if matchName(pat, tkeys[it]):
+				matches.append(tkeys[it])
+		return matches
 
-	def reset(conn):
-		filters = []; entries = [sortEntries(dbGetEntries(conn))];
-		return (filters, entries)
+	def sortEntries(entries, time_based = False):
+		if time_based:
+			return sorted(entries, key = lambda x : (x['ts'], x['name']))
+		else:
+			return sorted(entries, key = lambda x : (x['name']))
+
+	def reset(conn, time_based = False):
+		filters = []; entries = [sortEntries(dbGetEntries(conn), time_based)];
+		return (filters, entries, [time_based])
 
 	def textSearchEntry(ei, e, phrase):
 		if (not checkPlatMac()):
@@ -803,13 +858,23 @@ def enter_assisted_input():
 					ei = tinfo['entry_list'][i]
 					textSearchPrint(ei, entries[ei], tinfo['entry_errs'][i], tinfo['entry_lines'][i])
 
-	def listEntries(entries):
+	def listEntries(entries, show_ts=False):
 		for ie in range(len(entries)):
 			print '{}. '.format(ie+1),
-			printEntry(entries[ie]);
+			printEntry(entries[ie], show_ts=show_ts);
 
+	def handle_cd(filters, entries, time_based, newentries, filt, cd_time_based):
+		newentries = sortEntries( filterEntries(entries[-1], [filt]), cd_time_based )
+		if (len(newentries)):
+			filters.append(filt); entries.append( newentries ); time_based.append(cd_time_based);
+			if (len( newentries ) <= 24):
+				listEntries( entries[-1], show_ts=cd_time_based )
+		else:
+			print ' empty...'
+
+	cur_time_based = False
 	conn = dbStartSession(g_dbpath)
-	filters, entries = reset(conn)
+	filters, entries, time_based = reset(conn, cur_time_based)
 	viewEntryHist = []
 
 	try:
@@ -823,10 +888,18 @@ def enter_assisted_input():
 
 			if (cmd == 'q'):
 				break
+			elif (cmd in ['time', '+time']):
+				cur_time_based = True
+				entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
+				time_based[-1] = cur_time_based
+			elif (cmd in ['-time', 'notime']):
+				cur_time_based = False
+				entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
+				time_based[-1] = cur_time_based
 			elif (cmd == 'r' or cmd == 'reset'):
-				filters, entries = reset(conn)
-			elif (cmd == 'ls' or cmd == 'l'):
-				listEntries( entries[-1] )
+				filters, entries = reset(conn, cur_time_based)
+			elif (cmd == 'ls' or cmd == 'l' or cmd == 'tls'):
+				listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]) )
 			elif (cmd == 'tags' or cmd == 't'):
 				tags = {}
 				for e in entries[-1]:
@@ -845,29 +918,41 @@ def enter_assisted_input():
 					or cmd == '.'
 					or cmd == 'cd..'):
 				if (len(filters)):
-					filters.pop(); entries.pop();
-			elif (cmd == 'cd'):
-				if (len(input_splt) == 2):
-					tag = input_splt[1]
-					filter = {'type':'tag', 'pat':tag}
-					newentries = sortEntries( filterEntries(entries[-1], [filter]) )
-					if (len(newentries)):
-						filters.append(filter)
-						entries.append( newentries )
-						if (len( newentries ) <= 24):
-							listEntries( entries[-1] )
-					else:
-						print ' empty...'
+					filters.pop(); entries.pop(); time_based.pop();
+			elif (cmd == 'cd' or cmd == 'fcd'):
+				filter2 = [None]
+				if (cmd == 'cd'):
+					if (len(input_splt) == 2):
+						tag = input_splt[1]
+						filter2[0] = {'type':'tag', 'pat':tag}
+				elif (cmd == 'fcd'):
+					phrase = ' '.join(input_splt[1:])
+					matches = matchAllTags(phrase, entries[-1])
+					choices = printAndChoose(matches)
+					if (len(choices)):
+						filter2[0] = {'type':'tag', 'pat':choices[0]}
+				if (filter2[0] is not None):
+					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+					newentries = sortEntries( filterEntries(entries[-1], filter2), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based)
+				else:
+					print ' empty...'
 			elif (cmd == 'cn'):
 				if (len(input_splt) == 2):
 					tag = input_splt[1]
 					filter = {'type':'name', 'pat':tag}
-					newentries = sortEntries( filterEntries(entries[-1], [filter]) )
-					if (len(newentries)):
-						filters.append(filter)
-						entries.append( newentries )
-					else:
-						print ' empty...'
+					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+					newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based)
+			elif (cmd == 'ct'):
+				pat = fixupTimePat(' '.join([x for x in input_splt[1:] if x != '-t']))
+				if (len(pat)):
+					filter = {'type':'time', 'pat':pat}
+					cd_time_based = True if ('-t' not in input_splt) else False
+					newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based)
+				else:
+					print ' invalid pattern...'
 			elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
 				if (len(input_splt) == 2):
 					ei = int(input_splt[1])-1
@@ -910,7 +995,7 @@ def enter_assisted_input():
 					time = input_splt[2]
 				if (spath is not None):
 					scanImport(conn, spath, '1h' if time is None else time)
-				filters, entries = reset(conn)
+				filters, entries, time_based = reset(conn, cur_time_based)
 			elif (cmd == '+' or cmd == '-'):
 				if (len(input_splt) == 3):
 					ei = int(input_splt[1])-1
@@ -945,6 +1030,14 @@ def enter_assisted_input():
 				phrase = ' '.join(input_splt[1:])
 				nthreads = max(1, multiprocessing.cpu_count()-1)
 				textSearchEntries(entries[-1], phrase, nthreads)
+			elif (cmd == 'ft'):
+				phrase = ' '.join(input_splt[1:])
+				matches = matchAllTags(phrase, entries[-1])
+				for it in range(len(matches)):
+						print '{}. {}, '.format(it+1, matches[it]),
+						if (it % 10 == 0 and it != 0):
+							print ''
+				print '\n{} tags\n'.format(len(matches))
 			elif (cmd == 'remove' or cmd == 'delete'):
 				ei = int(input_splt[1])-1
 				entry = entries[-1][ei]
@@ -955,8 +1048,9 @@ def enter_assisted_input():
 
 	except:
 		dbEndSession(conn)
-		raise sys.exc_info()[0]
-
+		traceback.print_exc()
+		e = sys.exc_info()[0]
+		raise e
 	return 0
 
 def tagAdd(conn, fpath, ltags, jtags = None):
