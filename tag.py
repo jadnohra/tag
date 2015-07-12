@@ -63,71 +63,71 @@ ALL_CAPS = re.compile(r'^[A-Z\s\d%s]+$' % PUNCT)
 UC_INITIALS = re.compile(r"^(?:[A-Z]{1}\.{1}|[A-Z]{1}\.{1}[A-Z]{1})+$")
 MAC_MC = re.compile(r"^([Mm]c)(\w.+)")
 def titlecase(text, callback=None):
-    """
-    Titlecases input text
-    This filter changes all words to Title Caps, and attempts to be clever
-    about *un*capitalizing SMALL words like a/an/the in the input.
-    The list of "SMALL words" which are not capped comes from
-    the New York Times Manual of Style, plus 'vs' and 'v'.
-    """
-    lines = re.split('[\r\n]+', text);
-    processed = []
-    for line in lines:
-        all_caps = ALL_CAPS.match(line)
-        words = re.split('[\t ]', line)
-        tc_line = []
-        for word in words:
-            if callback:
-                new_word = callback(word, all_caps=all_caps)
-                if new_word:
-                    tc_line.append(new_word)
-                    continue
-            if all_caps:
-                if UC_INITIALS.match(word):
-                    tc_line.append(word)
-                    continue
-                else:
-                    word = word.lower()
-            if APOS_SECOND.match(word):
-                if len(word[0]) == 1 and word[0] not in 'aeiouAEIOU':
-                    word = word[0].lower() + word[1] + word[2].upper() + word[3:]
-                else:
-                    word = word[0].upper() + word[1] + word[2].upper() + word[3:]
-                tc_line.append(word)
-                continue
-            if INLINE_PERIOD.search(word) or UC_ELSEWHERE.match(word):
-                tc_line.append(word)
-                continue
-            if SMALL_WORDS.match(word):
-                tc_line.append(word.lower())
-                continue
-            match = MAC_MC.match(word)
-            if match:
-                tc_line.append("%s%s" % (match.group(1).capitalize(),
-                                         match.group(2).capitalize()))
-                continue
-            if "/" in word and "//" not in word:
-                slashed = map(lambda t: titlecase(t,callback), word.split('/'))
-                tc_line.append("/".join(slashed))
-                continue
-            if '-' in word:
-                hyphenated = map(lambda t: titlecase(t,callback), word.split('-'))
-                tc_line.append("-".join(hyphenated))
-                continue
-            # Just a normal word that needs to be capitalized
-            tc_line.append(CAPFIRST.sub(lambda m: m.group(0).upper(), word))
-        result = " ".join(tc_line)
-        result = SMALL_FIRST.sub(lambda m: '%s%s' % (
-            m.group(1),
-            m.group(2).capitalize()
-        ), result)
-        result = SMALL_LAST.sub(lambda m: m.group(0).capitalize(), result)
-        result = SUBPHRASE.sub(lambda m: '%s%s' % (
-            m.group(1),
-            m.group(2).capitalize()
-        ), result)
-        processed.append(result)
-    return "\n".join(processed)
+	"""
+	Titlecases input text
+	This filter changes all words to Title Caps, and attempts to be clever
+	about *un*capitalizing SMALL words like a/an/the in the input.
+	The list of "SMALL words" which are not capped comes from
+	the New York Times Manual of Style, plus 'vs' and 'v'.
+	"""
+	lines = re.split('[\r\n]+', text);
+	processed = []
+	for line in lines:
+		all_caps = ALL_CAPS.match(line)
+		words = re.split('[\t ]', line)
+		tc_line = []
+		for word in words:
+			if callback:
+				new_word = callback(word, all_caps=all_caps)
+				if new_word:
+					tc_line.append(new_word)
+					continue
+			if all_caps:
+				if UC_INITIALS.match(word):
+					tc_line.append(word)
+					continue
+				else:
+					word = word.lower()
+			if APOS_SECOND.match(word):
+				if len(word[0]) == 1 and word[0] not in 'aeiouAEIOU':
+					word = word[0].lower() + word[1] + word[2].upper() + word[3:]
+				else:
+					word = word[0].upper() + word[1] + word[2].upper() + word[3:]
+				tc_line.append(word)
+				continue
+			if INLINE_PERIOD.search(word) or UC_ELSEWHERE.match(word):
+				tc_line.append(word)
+				continue
+			if SMALL_WORDS.match(word):
+				tc_line.append(word.lower())
+				continue
+			match = MAC_MC.match(word)
+			if match:
+				tc_line.append("%s%s" % (match.group(1).capitalize(),
+										 match.group(2).capitalize()))
+				continue
+			if "/" in word and "//" not in word:
+				slashed = map(lambda t: titlecase(t,callback), word.split('/'))
+				tc_line.append("/".join(slashed))
+				continue
+			if '-' in word:
+				hyphenated = map(lambda t: titlecase(t,callback), word.split('-'))
+				tc_line.append("-".join(hyphenated))
+				continue
+			# Just a normal word that needs to be capitalized
+			tc_line.append(CAPFIRST.sub(lambda m: m.group(0).upper(), word))
+		result = " ".join(tc_line)
+		result = SMALL_FIRST.sub(lambda m: '%s%s' % (
+			m.group(1),
+			m.group(2).capitalize()
+		), result)
+		result = SMALL_LAST.sub(lambda m: m.group(0).capitalize(), result)
+		result = SUBPHRASE.sub(lambda m: '%s%s' % (
+			m.group(1),
+			m.group(2).capitalize()
+		), result)
+		processed.append(result)
+	return "\n".join(processed)
 
 largv = []
 
@@ -206,9 +206,15 @@ def matchName(pat, name):
 		return True
 	return False
 
+def dmy_as_date(d,m,y):
+	try:
+		return datetime.datetime(int(y), time.strptime(m,'%b').tm_mon, int(d)).date()
+	except:
+		return datetime.datetime(int(y), int(m), int(d)).date()
+
 def fixupTimePat(pat):
 	pat = pat.strip()
-	if len(pat.strip()) == 0:
+	if len(pat) == 0:
 		return 'today'
 	if (pat in ['today']):
 		return pat
@@ -218,20 +224,24 @@ def fixupTimePat(pat):
 			pat_splt.append(str(datetime.datetime.today().month))
 		if len(pat_splt) == 2:
 			pat_splt.append(str(datetime.datetime.today().year))
-		return '-'.join(pat_splt)
+		try:
+			if (len(pat_splt) == 3):
+				dmy_as_date(*pat_splt)
+			elif (len(pat_splt) == 6):
+				dmy_as_date(*pat_splt[:3]); dmy_as_date(*pat_splt[3:]);
+			else:
+				return ''
+			return '-'.join(pat_splt)
+		except:
+			return ''
 	return ''
 
 def matchTime(pat, ts):
-	def asdate(d,m,y):
-		try:
-			return datetime.datetime(int(y), time.strptime(m,'%b').tm_mon, int(d)).date()
-		except:
-			return datetime.datetime(int(y), int(m), int(d)).date()
 	pat_splt = pat.split('-')
 	if (len(pat_splt) == 3):
-		return ts.date() == asdate(*pat_splt)
+		return ts.date() == dmy_as_date(*pat_splt)
 	elif (len(pat_splt) == 6):
-		return ts.date() >= asdate(*pat_splt[:3]) and ts.date() >= asdate(*pat_splt[3:])
+		return ts.date() >= dmy_as_date(*pat_splt[:3]) and ts.date() <= dmy_as_date(*pat_splt[3:])
 	elif pat == 'today':
 		return ts.date() == datetime.datetime.today().date()
 	return False
@@ -324,14 +334,22 @@ def dbEndSession(conn):
 	conn.close()
 
 def dbUpgrade(conn):
-	#conn.execute("alter table file_entries add column 'open_count' 'INTEGER'")
-	#conn.commit()
+	#conn.execute("alter table file_links add column 'link_type' 'TEXT'")
+	#conn.execute('DROP TABLE file_links')
+	#conn.execute('CREATE TABLE file_links(link_from TEXT, link_to TEXT, link_type TEXT, descr TEXT, ts TIMESTAMP)')
+	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
+	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
+	conn.commit()
 	return 0
+
+def dbAddLink(conn, frm, to, tp, descr):
+	conn.execute("INSERT INTO file_links VALUES (?,?,?,?,?)", (frm, to, tp, descr, datetime.datetime.now() ) )
+	conn.commit()
 
 def dbAddEntry(conn, entry):
 	entry['tags'] = listToTags(entry['tags'])
 	tag_str = json.dumps( entry['tags'] )
-	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra']) ) )
+	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra'], entry['link_id']) ) )
 	conn.commit()
 
 def dbRemoveEntry(conn, entry):
@@ -353,13 +371,21 @@ def dbUpdateEntryName(conn, entry):
 	conn.execute('UPDATE file_entries SET name=? WHERE hashid=?', (entry['name'], entry['hashid'], ) )
 	conn.commit()
 
+def dbUpdateEntryLinkId(conn, entry):
+	conn.execute('UPDATE file_entries SET link_id=? WHERE hashid=?', (entry['link_id'], entry['hashid'], ) )
+	conn.commit()
+
 def dbUpdateEntry(conn, entry):
 	dbRemoveEntry(conn, entry)
 	dbAddEntry(conn, entry)
 
 def dbRecToEntryIndexed(rec):
 	rec_extra = rec[5] if rec[5] is not None else ''
-	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]), 'tags':listToTags(json.loads(rec[3])), 'ts':datetime.datetime.strptime(rec[4], "%Y-%m-%d %H:%M:%S.%f"), 'extra':rec_extra.split(',') }
+	rec_link_id = rec[6] if rec[6] is not None else ''
+	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]),
+				'tags':listToTags(json.loads(rec[3])), 'ts':datetime.datetime.strptime(rec[4], "%Y-%m-%d %H:%M:%S.%f"),
+				'extra':rec_extra.split(','),
+				'link_id':rec_link_id }
 	return entry
 
 def dbGetEntries(conn):
@@ -383,8 +409,25 @@ def dbGetEntryByHash(conn, hashid):
 	recs.close()
 	return entry
 
+def dbGetLinkPartners(conn, link_id):
+	ret = []
+	recs = conn.execute('SELECT link_type,link_to FROM file_links WHERE link_from=?', (link_id, ) )
+	rec = recs.fetchone()
+	while (rec != None):
+		ret.append('{} {}'.format(rec[0], rec[1]))
+		rec = recs.fetchone()
+	recs.close()
+	recs = conn.execute('SELECT link_type,link_from FROM file_links WHERE link_to=?', (link_id, ) )
+	rec = recs.fetchone()
+	while (rec != None):
+		ret.append('{} {}'.format(rec[1], rec[0]))
+		rec = recs.fetchone()
+	recs.close()
+	return ret
+
 def flattags(tags):
-	return sorted(tags.keys())
+	flat = [k if (len(v)==0) else '{}:{}'.format(k,v) for k,v in tags.items()]
+	return sorted(flat)
 
 def listToTags(ltags):
 	if isinstance(ltags, list):
@@ -404,42 +447,64 @@ def printList(lst, sep, col1, col2):
 	print_col('default')
 	print ''
 
-def printEntry(entry, mode = 2, show_ts = False):
+def printTagList(lst, sep, col1, col2, coldeep):
+	for i in range(len(lst)):
+		print_col(coldeep if (':' in lst[i]) else (col2 if i%2 else col1))
+		print '{}{}'.format(lst[i], sep if i+1<len(lst) else ''),
+	print_col('default')
+	print ''
+
+def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = None, len_prefix = 0):
 	if mode > 0:
 		if (show_ts):
 			print '<{}>'.format(entry['ts'].strftime('%d-%b-%Y')),
 		if mode == 1:
-			print unistr('[{}]').format(entry['name']),
-			printList(flattags(entry['tags']), ',', 'yellow', 'yellow')
+			print unistr('[{}]{}').format(entry['name'], '/{}'.format(entry['link_id']) if len(entry['link_id']) else '' ),
+			printList(flattags(entry['tags']), ',', 'yellow', 'yellow', 'magenta')
 			#print_col('yellow'); print ','.join(flattags(entry['tags'])); print_col('default');
 		else:
 			print unistr('[{}] ').format(entry['name']),
-			items = entry['tags'].keys()
+			if len(entry['link_id']):
+				print_col('bblue');  print unistr('({})').format(entry['link_id']),; print_col('bdefault'); sys.stdout.write(' ');
+			items = flattags(entry['tags'])
 		 	for iti in range(len(items)):
-				print_col('bwhite'); print ' ',; print_col('bgreen');
+				print_col('bwhite'); print ' ',; print_col('bmagenta' if (':' in items[iti]) else 'bgreen');
 				print u' {} '.format(items[iti]),
 			print_col('bwhite'); print ' ',
 			print_col('bdefault'); print '';
+			if show_links and len(entry['link_id']):
+				partners = dbGetLinkPartners(conn_db, entry['link_id'])
+				if len(partners):
+					print ''.join([' ']*(len_prefix+2)),
+					for iti in range(len(partners)):
+						print_col('bwhite'); print ' ',; print_col('bblue');
+						print u' {} '.format(partners[iti]),
+					print_col('bwhite'); print ' ',
+					print_col('bdefault'); print '';
 	else:
 		print entry['hashid'], entry['fname'], entry['ts'], entry['name'], entry['tags']
 
-def editEntry(entry, ename = True, etags = True, nameFirst = True):
-	def finalizeName(entry, name):
-		if (name != entry['name']):
-			print name
-			entry['name'] = name
-			return True
-		return False
-	def finalizeTags(entry, tag_str):
-		tagsa = [x.strip() for x in tag_str.split(',')]
-		tags = {}
-		for tag in tagsa:
+def editFinalizeName(entry, name):
+	if (name != entry['name']):
+		print name
+		entry['name'] = name
+		return True
+	return False
+def editFinalizeTags(entry, tag_str):
+	tagsa = [x.strip() for x in tag_str.split(',')]
+	tags = {}
+	for tag in tagsa:
+		if (':' not in tag):
 			tags[tag] = ''
-		if (entry['tags'] != tags):
-			print flattags(tags)
-			entry['tags'] = tags
-			return True
-		return False
+		else:
+			tags[tag.split(':')[0]] = tag.split(':')[1]
+	if (entry['tags'] != tags):
+		print flattags(tags)
+		entry['tags'] = tags
+		return True
+	return False
+
+def editEntry(entry, ename = True, etags = True, nameFirst = True):
 	try:
 		if (ename and etags):
 			print entry['name']
@@ -504,45 +569,32 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 		re_pat = re.compile(ur'\<([^\>]*)\>')
 		re_mat = re.findall(re_pat, entry_str)
 		if (len(re_mat) == 2):
-			modn = finalizeName(entry, re_mat[0 if nameFirst else 1])
-			modt = finalizeTags(entry, re_mat[1 if nameFirst else 0])
+			modn = editFinalizeName(entry, re_mat[0 if nameFirst else 1])
+			modt = editFinalizeTags(entry, re_mat[1 if nameFirst else 0])
 			return (modn or modt)
 		return False
 	elif (ename):
-		return finalizeName(entry, entry_str)
+		return editFinalizeName(entry, entry_str)
 	elif (etags):
-		return finalizeTags(entry, entry_str)
+		return editFinalizeTags(entry, entry_str)
 	return False
 
 def editEntry2(entry, ename = True, etags = True, nameFirst = True):
-	def finalizeName(entry, name):
-		if (name != entry['name']):
-			print name
-			entry['name'] = name
-			return True
-		return False
-	def finalizeTags(entry, tag_str):
-		tagsa = [x.strip() for x in tag_str.split(',')]
-		tags = {}
-		for tag in tagsa:
-			tags[tag] = ''
-		if (entry['tags'] != tags):
-			print flattags(tags)
-			entry['tags'] = tags
-			return True
-		return False
 	def cprint(str, lpos):
 		print str,;	return lpos + len(str);
-
-	if True:
+	if largv_has(['-simple_edit']):
 		return editEntry(entry, ename, etags, nameFirst)
-
 	try:
 		ipos = 0
 		lipos = -1
 		epos = -1
-		items = [ {'str':'{}'.format(entry['name'])} ]
-		items.extend([{'str':x} for x in entry['tags'].keys() ] )
+		items = []
+		if ename and nameFirst:
+			items.extend([ {'str':'{}'.format(entry['name']), 'src':'name'} ])
+		if etags:
+			items.extend([{'str':x, 'src':'tag'} for x in flattags(entry['tags']) ] )
+		if ename and (not nameFirst):
+			items.extend([ {'str':'{}'.format(entry['name']), 'src':'name'} ])
 		prefix = ' : '
 		while 1:
 			lpos = 0
@@ -556,9 +608,9 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 					if (epos == -1):
 						print_col('bblue' if iti>0 else 'bblue')
 					else:
-						print_col('bred' if iti>0 else 'bred')
+						print_col(('bred' if (':' in items[iti]['str']) else 'bred')  if iti>0 else 'bred')
 				else:
-					print_col('bgreen' if iti>0 else 'bcyan')
+					print_col( ('bmagenta' if (':' in items[iti]['str']) else 'bgreen')  if iti>0 else 'bcyan')
 				items[iti]['lpos'] = lpos+1
 				lpos = cprint(u' {} '.format(items[iti]['str']), lpos)
 
@@ -613,6 +665,14 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 			#else:
 			#	print inp,
 
+		newflattags = []
+		for it in items:
+			if it['src'] == 'name' and it['str'] != entry['name']:
+				editFinalizeName(entry, it['str'])
+			elif it['src'] == 'tag':
+				newflattags.append(it['str'])
+		if etags:
+			editFinalizeTags(entry, ','.join(newflattags))
 	except:
 		traceback.print_exc()
 		e = sys.exc_info()[0]
@@ -712,6 +772,8 @@ def enter_assisted_input():
 						fpass = fpass and matchTags(f['pat'], e['tags'])
 					elif (f['type'] == 'time'):
 						fpass = fpass and matchTime(f['pat'], e['ts'])
+					elif (f['type'] == 'linked'):
+						fpass = fpass and len(e['link_id']) > 0
 				else:
 					break
 			if (fpass):
@@ -799,8 +861,9 @@ def enter_assisted_input():
 		return (elines, count)
 
 	def showEntry(ei, e):
-		print('\n{}. '.format(ei+1)),
-		printEntry(e)
+		prefix = '\n{}. '.format(ei+1)
+		print(prefix),
+		printEntry(e, len_prefix=len(prefix))
 
 	def printErrLines(ei, e, elines):
 		if (len(elines) == 0):
@@ -858,21 +921,22 @@ def enter_assisted_input():
 					ei = tinfo['entry_list'][i]
 					textSearchPrint(ei, entries[ei], tinfo['entry_errs'][i], tinfo['entry_lines'][i])
 
-	def listEntries(entries, show_ts=False):
+	def listEntries(entries, show_ts=False, show_links = False, conn_db = None):
 		for ie in range(len(entries)):
-			print '{}. '.format(ie+1),
-			printEntry(entries[ie], show_ts=show_ts);
+			prefix = '{}. '.format(ie+1)
+			print prefix,
+			printEntry(entries[ie], show_ts=show_ts, show_links=show_links, conn_db = conn_db, len_prefix = len(prefix));
 
-	def handle_cd(filters, entries, time_based, newentries, filt, cd_time_based):
+	def handle_cd(filters, entries, time_based, newentries, filt, cd_time_based, show_links, conn_db):
 		newentries = sortEntries( filterEntries(entries[-1], [filt]), cd_time_based )
 		if (len(newentries)):
 			filters.append(filt); entries.append( newentries ); time_based.append(cd_time_based);
 			if (len( newentries ) <= 24):
-				listEntries( entries[-1], show_ts=cd_time_based )
+				listEntries( entries[-1], show_ts=cd_time_based, show_links = show_links, conn_db = conn_db )
 		else:
 			print ' empty...'
 
-	cur_time_based = False
+	cur_time_based = False; cur_show_links = True;
 	conn = dbStartSession(g_dbpath)
 	filters, entries, time_based = reset(conn, cur_time_based)
 	viewEntryHist = []
@@ -883,6 +947,14 @@ def enter_assisted_input():
 			pats = [x['pat'] for x in filters]
 			print '/{} ({})>'.format('/'.join(pats), len(entries[-1])),
 			inp = raw_input()
+
+			#if (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'A']):
+			#	print 'xxx'
+			#elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'B']):
+			#	print 'yyy'
+			#elif (len(inp) >= 3):
+			#	print 'yyy'
+
 			input_splt = inp.split(' ')
 			cmd = input_splt[0]
 
@@ -896,10 +968,14 @@ def enter_assisted_input():
 				cur_time_based = False
 				entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
 				time_based[-1] = cur_time_based
+			elif (cmd in ['links', '+links']):
+				cur_show_links = True
+			elif (cmd in ['nolinks', '-links']):
+				cur_show_links = False
 			elif (cmd == 'r' or cmd == 'reset'):
 				filters, entries = reset(conn, cur_time_based)
 			elif (cmd == 'ls' or cmd == 'l' or cmd == 'tls'):
-				listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]) )
+				listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]), show_links = cur_show_links, conn_db = conn )
 			elif (cmd == 'tags' or cmd == 't'):
 				tags = {}
 				for e in entries[-1]:
@@ -921,38 +997,62 @@ def enter_assisted_input():
 					filters.pop(); entries.pop(); time_based.pop();
 			elif (cmd == 'cd' or cmd == 'fcd'):
 				filter2 = [None]
-				if (cmd == 'cd'):
-					if (len(input_splt) == 2):
-						tag = input_splt[1]
-						filter2[0] = {'type':'tag', 'pat':tag}
-				elif (cmd == 'fcd'):
-					phrase = ' '.join(input_splt[1:])
-					matches = matchAllTags(phrase, entries[-1])
-					choices = printAndChoose(matches)
-					if (len(choices)):
-						filter2[0] = {'type':'tag', 'pat':choices[0]}
-				if (filter2[0] is not None):
-					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-					newentries = sortEntries( filterEntries(entries[-1], filter2), cd_time_based )
-					handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based)
-				else:
-					print ' empty...'
+				repeat_count = 0; repeat = True;
+				while repeat:
+					repeat = False
+					if (cmd == 'cd' and repeat_count == 0):
+						if (len(input_splt) == 2):
+							tag = input_splt[1]
+							filter2[0] = {'type':'tag', 'pat':tag}
+					elif (cmd == 'fcd' or repeat_count > 0):
+						phrase = ' '.join(input_splt[1:])
+						matches = matchAllTags(phrase, entries[-1])
+						choices = printAndChoose(matches)
+						if (len(choices)):
+							filter2[0] = {'type':'tag', 'pat':choices[0]}
+					if (filter2[0] is not None):
+						cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+						newentries = sortEntries( filterEntries(entries[-1], filter2), cd_time_based )
+						handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn)
+						if (len(newentries) == 0 and cmd == 'cd' and repeat_count == 0):
+							print ' trying a search instead...'
+							repeat_count = 1; repeat = True;
+					else:
+						print ' empty...'
+						if (cmd == 'cd' and repeat_count == 0):
+							repeat_count = 1; repeat = True;
 			elif (cmd == 'cn'):
 				if (len(input_splt) == 2):
 					tag = input_splt[1]
 					filter = {'type':'name', 'pat':tag}
 					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
 					newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
-					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based)
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn)
 			elif (cmd == 'ct'):
 				pat = fixupTimePat(' '.join([x for x in input_splt[1:] if x != '-t']))
 				if (len(pat)):
 					filter = {'type':'time', 'pat':pat}
 					cd_time_based = True if ('-t' not in input_splt) else False
 					newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
-					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based)
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn)
 				else:
 					print ' invalid pattern...'
+			elif (cmd == 'cl'):
+				filter = {'type':'linked', 'pat':'linked'}
+				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+				newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
+				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn)
+			elif (cmd == 'lid'):
+				if (len(input_splt) == 3):
+					ei = int(input_splt[1])-1; entry = entries[-1][ei]; lid = input_splt[2];
+					if (entry['link_id'] != lid):
+						old_lid = entry['link_id']; entry['link_id'] = lid;
+						dbUpdateEntryLinkId(conn, entry)
+						print ' {} (was {})'.format(lid, old_lid)
+			elif (cmd == 'link'):
+				if (len(input_splt) >= 4):
+					link_from = input_splt[1]; link_type = input_splt[2]; link_to = input_splt[3]; link_desc = ' '.join(input_splt[4:]);
+					dbAddLink(conn, link_from, link_to, link_type, link_desc)
 			elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
 				if (len(input_splt) == 2):
 					ei = int(input_splt[1])-1
