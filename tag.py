@@ -303,7 +303,7 @@ def createEntry(fpath, tags):
 	fname = makeCleanFilename(fpath)
 	name,ext = os.path.splitext(fname)
 	hashid = genFileMD5Str(fpath, fname)
-	return { 'hashid':hashid, 'fname':fname, 'name':name, 'tags':tags, 'ts':datetime.datetime.now(), 'extra':'' }
+	return { 'hashid':hashid, 'fname':fname, 'name':name, 'tags':tags, 'ts':datetime.datetime.now(), 'extra':'', 'link_id':'' }
 
 def dbBootstrap(conn):
 	conn.execute('CREATE TABLE file_entries(hashid TEXT PRIMARY KEY, fname TEXT, name TEXT, tags TEXT, ts TIMESTAMP)')
@@ -349,7 +349,7 @@ def dbAddLink(conn, frm, to, tp, descr):
 def dbAddEntry(conn, entry):
 	entry['tags'] = listToTags(entry['tags'])
 	tag_str = json.dumps( entry['tags'] )
-	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra'], entry['link_id']) ) )
+	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra']), entry['link_id'] ) )
 	conn.commit()
 
 def dbRemoveEntry(conn, entry):
@@ -460,7 +460,7 @@ def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = N
 			print '<{}>'.format(entry['ts'].strftime('%d-%b-%Y')),
 		if mode == 1:
 			print unistr('[{}]{}').format(entry['name'], '/{}'.format(entry['link_id']) if len(entry['link_id']) else '' ),
-			printList(flattags(entry['tags']), ',', 'yellow', 'yellow', 'magenta')
+			printTagList(flattags(entry['tags']), ',', 'yellow', 'yellow', 'magenta')
 			#print_col('yellow'); print ','.join(flattags(entry['tags'])); print_col('default');
 		else:
 			print unistr('[{}] ').format(entry['name']),
@@ -698,11 +698,11 @@ def addFile(sess, conn, fpath, tags, copy):
 	return addEntry(sess, conn, fpath, entry, copy)
 
 def addEntry(sess, conn, fpath, entry, copy):
-	def addIgnored(sess, key, fpath):
+	def addIgnored(sess, key, fpath, extra_info = None):
 		if (sess is not None):
 			if (key not in sess):
 				sess[key] = []
-			sess[key].append(fpath)
+			sess[key].append(fpath if (extra_info is None) else (fpath, extra_info))
 
 	if (g_repo is not None):
 		if (not os.path.isdir(g_repo)):
@@ -712,7 +712,7 @@ def addEntry(sess, conn, fpath, entry, copy):
 			if (os.path.isfile(tpath)):
 				thashid = genFileMD5Str(tpath, makeCleanFilename(tpath))
 				if (thashid == entry['hashid']):
-					addIgnored(sess, 'ignored', fpath)
+					addIgnored(sess, 'ignored', fpath, entry)
 					return None
 				print 'File name clash [{}], edit? [ y(es), n(o) ]:'.format(entry['fname']),
 				inp = raw_input()
@@ -720,13 +720,13 @@ def addEntry(sess, conn, fpath, entry, copy):
 				if (inp.lower() in ['y', 'yes']):
 					if (editEntry(entry, True, False)):
 						return addEntry(sess, conn, fpath, entry, copy)
-				addIgnored(sess, 'clashed', fpath)
+				addIgnored(sess, 'clashed', fpath, entry)
 				return None
 			#print_col('green'); print 'Copy [{}]->[{}]'.format(fpath, tpath); print_col('default');
 			shutil.copyfile(fpath, tpath)
 	if True:
 		if (dbExistsEntry(conn, entry)):
-			addIgnored(sess, 'ignored', fpath)
+			addIgnored(sess, 'exists', fpath, entry)
 			return None
 		dbAddEntry(conn, entry)
 	return entry
@@ -1291,7 +1291,10 @@ def scanImport(conn, spath, time):
 		tags = extractTagsFromFileName(fpath)
 		if (len(tags) == 0):
 			tags['scan'] = ''
-		entry = addFile(None, conn, fpath, tags, True)
+		sess = 	{}
+		entry = addFile(sess, conn, fpath, tags, True)
+		if (len(sess)):
+			print sess
 		if (entry is not None):
 			editUpdateEntry(conn, entry, True, True, False)
 		else:
