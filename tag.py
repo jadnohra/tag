@@ -49,6 +49,124 @@ def getch():
 		fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
 	return c
 
+def vt_hist_create():
+	return { 'list':[], 'max':30, 'index':0  }
+
+def vt_hist_add(hist, item, max = 30):
+	if item not in hist:
+		hist.append(item)
+	if len(hist) > max:
+		hist.remove(0)
+
+def vt_edit(prefix, initial, hist = None):
+	inpchars = [x for x in initial]
+	while True:
+		print '\x1B[2K', '\r{} {}'.format(prefix, ''.join(inpchars)),
+		pre_inp = getch()
+		if (len(pre_inp) >= 3 and pre_inp[0:3] == ['\x1B', '[', 'A'] and hist):
+			if (hist['index'] >= -len(hist['list'])):
+				hist['index'] = hist['index']-1
+			if (hist['index'] >= -len(hist['list'])):
+				inpchars = [x for x in hist['list'][hist['index']]]
+			else:
+				inpchars = []
+		elif (len(pre_inp) >= 3 and pre_inp[0:3] == ['\x1B', '[', 'B']):
+			if (hist['index'] <= -1):
+				hist['index'] = hist['index']+1
+			if (hist['index'] < 0):
+				inpchars = [x for x in hist['list'][hist['index']]]
+			else:
+				inpchars = []
+		if len(pre_inp) == 1:
+			if ('\n' in pre_inp):
+				sys.stdout.write('\n')
+				break
+			else:
+				for x in pre_inp:
+					if x == '\x7F':
+						if len(inpchars):
+							inpchars.pop()
+					else:
+						inpchars.append(x)
+	return ''.join(inpchars)
+
+def vt_edit2(prefix, items, sep_back = 'bwhite', type_back = {}, sel_back = 'bblue', edit_back = 'bred'):
+	def cprint(str, lpos):
+		print str,;	return lpos + len(str);
+	def bcol(item, type_back):
+		return type_back.get( item.get('type', ''), 'bcyan')
+	try:
+		ipos = 0
+		lipos = -1
+		epos = -1
+		while 1:
+			lpos = 0
+			sys.stdout.write('\x1B[2K'); sys.stdout.write('\r');
+			lpos = cprint('{}'.format(prefix), lpos)
+			for iti in range(len(items)):
+				print_col(sep_back); lpos = cprint(' ', lpos);
+				print_col( bcol(items[iti], type_back) if (iti != ipos) else sel_back if (epos == -1) else edit_back)
+				items[iti]['lpos'] = lpos+1
+				lpos = cprint(u' {} '.format(items[iti]['str']), lpos)
+			print_col('bdefault')
+			sys.stdout.write('\r')
+			if (epos != -1):
+				sys.stdout.write('\r\x1B[{}C'.format(items[ipos]['lpos'] + epos))
+			inp = getch()
+			if (epos == -1):
+				if (len(inp) == 1 and ord(inp[0]) == 27):
+					break
+				elif ('\n' in inp):
+					if (lipos == ipos):
+						break
+					else:
+						epos = 0
+				elif ('q' in inp):
+					break
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'C']):
+					ipos = min(ipos + 1, len(items)-1)
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'D']):
+					ipos = max(ipos - 1, 0)
+				elif (len(inp)==1):
+					char = inp[0]
+					if (True and (ord(char) >= 32 and ord(char) <= 126)):
+						ipos = ipos
+					elif (ord(char) == 9):
+						ipos = min(ipos + 1, len(items)-1)
+					#else:
+					#	print 'xxx'; print 'xxx'
+			else:
+				edit_str = items[ipos]['str']
+				if (len(inp) == 1 and ord(inp[0]) == 27):
+					epos = -1
+					lipos = ipos
+				elif ('\n' in inp):
+					epos = -1
+					lipos = ipos
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'C']):
+					epos = min(epos + 1, len(edit_str))
+				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'D']):
+					epos = max(epos - 1, 0)
+				elif (len(inp) >= 1 and inp[0] == '\x7F'):
+					if (epos > 0):
+						edit_str = edit_str[0:epos-1] + edit_str[epos:]
+						epos = epos-1
+				elif (len(inp)==1):
+					char = inp[0]
+					if ((ord(char) >= 32 and ord(char) <= 126)):
+						edit_str = edit_str[0:epos] + ''.join(inp) + edit_str[epos:]
+						epos = epos + 1
+				items[ipos]['str'] = edit_str
+	except:
+		traceback.print_exc()
+		e = sys.exc_info()[0]
+		raise e
+		return False
+	finally:
+		print_col('default')
+		print ''
+	return True
+
 SMALL = 'a|an|and|as|at|but|by|en|for|if|in|of|on|or|the|to|v\.?|via|vs\.?'
 PUNCT = "!\"#$%&'‘()*+,\\-./:;?@[\\\\\]_`{|}~"
 SMALL_WORDS = re.compile(r'^(%s)$' % SMALL, re.I)
@@ -336,14 +454,18 @@ def dbEndSession(conn):
 def dbUpgrade(conn):
 	#conn.execute("alter table file_links add column 'link_type' 'TEXT'")
 	#conn.execute('DROP TABLE file_links')
-	#conn.execute('CREATE TABLE file_links(link_from TEXT, link_to TEXT, link_type TEXT, descr TEXT, ts TIMESTAMP)')
+	#conn.execute('CREATE TABLE file_links(link_id INTEGER PRIMARY KEY AUTOINCREMENT, link_from TEXT, link_to TEXT, link_type TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
 	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
 	conn.commit()
 	return 0
 
 def dbAddLink(conn, frm, to, tp, descr):
-	conn.execute("INSERT INTO file_links VALUES (?,?,?,?,?)", (frm, to, tp, descr, datetime.datetime.now() ) )
+	conn.execute("INSERT INTO file_links VALUES (?,?,?,?,?,?)", (None, frm, to, tp, descr, datetime.datetime.now() ) )
+	conn.commit()
+
+def dbUpdateLink(conn, link):
+	conn.execute('UPDATE file_links SET link_from=?, link_to=?, link_type=?, descr=?, ts=? WHERE link_id=?', (link[1], link[2], link[3], link[4], link[5], link[0],) )
 	conn.commit()
 
 def dbAddEntry(conn, entry):
@@ -409,20 +531,33 @@ def dbGetEntryByHash(conn, hashid):
 	recs.close()
 	return entry
 
-def dbGetLinkPartners(conn, link_id):
+def dbGetLinkFull(conn, link_id):
+	recs = conn.execute('SELECT link_id, link_from, link_to, link_type, descr, ts FROM file_links WHERE link_id=?', (link_id, ) )
+	rec = recs.fetchone()
+	recs.close()
+	return rec
+
+def dbGetLinkPartners(conn, from_link_id, show_link_descr = False):
+	rets = ([], []); conds = ('link_from', 'link_to');
+	for i in range(len(conds)):
+		cond = conds[i]
+		recs = conn.execute('SELECT link_id, link_from, link_to, link_type {} FROM file_links WHERE {}=?'.format(', descr' if show_link_descr else '', cond), (from_link_id, ) )
+		rec = recs.fetchone()
+		while (rec != None):
+			rets[i].append(rec)
+			rec = recs.fetchone()
+		recs.close()
+	return rets	
+
+def dbGetLinkPartnerStrings(conn, link_id, show_link_descr = False):
+	def format_descr_has(x, show_link_descr):
+		return ' ({})'.format(x[4]) if len(x[4]) else ''
+	def format_descr(x, show_link_descr):
+		return format_descr_has(x, show_link_descr) if show_link_descr else ''
+	ret1, ret2 = dbGetLinkPartners(conn, link_id, show_link_descr)
 	ret = []
-	recs = conn.execute('SELECT link_type,link_to FROM file_links WHERE link_from=?', (link_id, ) )
-	rec = recs.fetchone()
-	while (rec != None):
-		ret.append('{} {}'.format(rec[0], rec[1]))
-		rec = recs.fetchone()
-	recs.close()
-	recs = conn.execute('SELECT link_type,link_from FROM file_links WHERE link_to=?', (link_id, ) )
-	rec = recs.fetchone()
-	while (rec != None):
-		ret.append('{} {}'.format(rec[1], rec[0]))
-		rec = recs.fetchone()
-	recs.close()
+	ret.extend(['{} {}{}'.format(x[3], x[2], format_descr(x, show_link_descr)) for x in ret1])
+	ret.extend(['{} {}{}'.format(x[1], x[3], format_descr(x, show_link_descr)) for x in ret2])
 	return ret
 
 def flattags(tags):
@@ -454,7 +589,7 @@ def printTagList(lst, sep, col1, col2, coldeep):
 	print_col('default')
 	print ''
 
-def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = None, len_prefix = 0):
+def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = None, len_prefix = 0, show_link_descr = False):
 	if mode > 0:
 		if (show_ts):
 			print '<{}>'.format(entry['ts'].strftime('%d-%b-%Y')),
@@ -473,11 +608,11 @@ def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = N
 			print_col('bwhite'); print ' ',
 			print_col('bdefault'); print '';
 			if show_links and len(entry['link_id']):
-				partners = dbGetLinkPartners(conn_db, entry['link_id'])
+				partners = dbGetLinkPartnerStrings(conn_db, entry['link_id'], show_link_descr)
 				if len(partners):
 					print ''.join([' ']*(len_prefix+2)),
 					for iti in range(len(partners)):
-						print_col('bwhite'); print ' ',; print_col('bblue');
+						print_col('bwhite'); print '{}'.format(iti+1),; print_col('bblue');
 						print u' {} '.format(partners[iti]),
 					print_col('bwhite'); print ' ',
 					print_col('bdefault'); print '';
@@ -628,6 +763,8 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 						break
 					else:
 						epos = 0
+				elif ('q' in inp):
+					break
 				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'C']):
 					ipos = min(ipos + 1, len(items)-1)
 				elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'D']):
@@ -681,9 +818,7 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 	finally:
 		print_col('default')
 		print ''
-
 	return False
-
 
 def editUpdateEntry(conn, entry, ename, etags, nameFirst = True):
 	modded = editEntry2(entry, ename, etags, nameFirst)
@@ -692,6 +827,17 @@ def editUpdateEntry(conn, entry, ename, etags, nameFirst = True):
 		entry = dbGetEntryByHash(conn, entry['hashid'])
 		print_col('green'); printEntry(entry, 1); print_col('default');
 
+def editUpdateLinkPartner(conn, entry, li):
+	ret1,ret2 = dbGetLinkPartners(conn, entry['link_id'])
+	link_rec = ret1[li] if (li < len(ret1)) else ret2[li-len(ret1)]
+	full_rec = dbGetLinkFull(conn, link_rec[0])
+	edit_inds = [1,3,2,4]
+	edit_items = [{'str':full_rec[x]} for x in edit_inds]
+	vt_edit2(' ', edit_items)
+	new_rec = [full_rec[x] if (x not in edit_inds) else edit_items[edit_inds.index(x)]['str'] for x in range(len(full_rec))]
+	if (new_rec != full_rec):
+		dbUpdateLink(conn, new_rec)
+	return 0
 
 def addFile(sess, conn, fpath, tags, copy):
 	entry = createEntry(fpath, tags)
@@ -940,21 +1086,13 @@ def enter_assisted_input():
 	conn = dbStartSession(g_dbpath)
 	filters, entries, time_based = reset(conn, cur_time_based)
 	viewEntryHist = []
+	cmd_hist = vt_hist_create()
 
 	try:
-
 		while True:
-			pats = [x['pat'] for x in filters]
-			print '/{} ({})>'.format('/'.join(pats), len(entries[-1])),
-			inp = raw_input()
-
-			#if (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'A']):
-			#	print 'xxx'
-			#elif (len(inp) >= 3 and inp[0:3] == ['\x1B', '[', 'B']):
-			#	print 'yyy'
-			#elif (len(inp) >= 3):
-			#	print 'yyy'
-
+			pats = [x['pat'] for x in filters]; prefix = '/{} ({})>'.format('/'.join(pats), len(entries[-1]))
+			inp = vt_edit(prefix, '', cmd_hist)
+			#inp = raw_input(); print inp;
 			input_splt = inp.split(' ')
 			cmd = input_splt[0]
 
@@ -968,7 +1106,7 @@ def enter_assisted_input():
 				cur_time_based = False
 				entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
 				time_based[-1] = cur_time_based
-			elif (cmd in ['links', '+links']):
+			elif (inp in ['links', '+links']):
 				cur_show_links = True
 			elif (cmd in ['nolinks', '-links']):
 				cur_show_links = False
@@ -1017,6 +1155,8 @@ def enter_assisted_input():
 						if (len(newentries) == 0 and cmd == 'cd' and repeat_count == 0):
 							print ' trying a search instead...'
 							repeat_count = 1; repeat = True;
+						else:
+							vt_hist_add(cmd_hist['list'], inp)
 					else:
 						print ' empty...'
 						if (cmd == 'cd' and repeat_count == 0):
@@ -1053,11 +1193,23 @@ def enter_assisted_input():
 				if (len(input_splt) >= 4):
 					link_from = input_splt[1]; link_type = input_splt[2]; link_to = input_splt[3]; link_desc = ' '.join(input_splt[4:]);
 					dbAddLink(conn, link_from, link_to, link_type, link_desc)
+			elif (cmd == 'links'):
+				if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1; entry = entries[-1][ei];
+						prefix = ' '; print prefix;
+						printEntry(entry, show_ts=cur_time_based, show_links=True, conn_db = conn, len_prefix = len(prefix), show_link_descr = True)
 			elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
 				if (len(input_splt) == 2):
 					ei = int(input_splt[1])-1
 					entry = entries[-1][ei]
 					editUpdateEntry( conn, entry, cmd == 'e' or cmd == 'en', cmd == 'e' or cmd == 'et')
+			elif (cmd == 'el'):
+				if (len(input_splt) == 3):
+					try:
+						ei = int(input_splt[1])-1; li = int(input_splt[2])-1; entry = entries[-1][ei];
+						editUpdateLinkPartner( conn, entry, li)
+					except:
+						traceback.print_exc()
 			elif (cmd == 'o' or cmd == 'read' or cmd == 'view'):
 				if (len(input_splt) == 2):
 					ei = int(input_splt[1])-1
