@@ -275,6 +275,12 @@ def largv_geti(i, dflt):
 		return dflt
 	return largv[i]
 
+def is_int(str):
+	try:
+		i = int(str); return True;
+	except:
+		return False
+
 def runUnpiped(args):
 	subprocess.Popen(args)
 
@@ -453,8 +459,8 @@ def dbEndSession(conn):
 
 def dbUpgrade(conn):
 	#conn.execute("alter table file_links add column 'link_type' 'TEXT'")
-	#conn.execute('DROP TABLE file_links')
-	#conn.execute('CREATE TABLE file_links(link_id INTEGER PRIMARY KEY AUTOINCREMENT, link_from TEXT, link_to TEXT, link_type TEXT, descr TEXT, ts TIMESTAMP)')
+	#conn.execute('DROP TABLE file_notes')
+	conn.execute('CREATE TABLE file_notes(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
 	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
 	conn.commit()
@@ -466,6 +472,14 @@ def dbAddLink(conn, frm, to, tp, descr):
 
 def dbUpdateLink(conn, link):
 	conn.execute('UPDATE file_links SET link_from=?, link_to=?, link_type=?, descr=?, ts=? WHERE link_id=?', (link[1], link[2], link[3], link[4], link[5], link[0],) )
+	conn.commit()
+
+def dbAddNote(conn, link_id, loc, descr):
+	conn.execute("INSERT INTO file_notes VALUES (?,?,?,?,?)", (None, link_id, loc, descr, datetime.datetime.now() ) )
+	conn.commit()
+
+def dbUpdateNote(conn, note):
+	conn.execute('UPDATE file_notes SET link_id=?, loc=?, descr=?, ts=? WHERE note_id=?', (note[1], note[2], note[3], note[4], note[0],) )
 	conn.commit()
 
 def dbAddEntry(conn, entry):
@@ -537,6 +551,12 @@ def dbGetLinkFull(conn, link_id):
 	recs.close()
 	return rec
 
+def dbGetNoteFull(conn, note_id):
+	recs = conn.execute('SELECT note_id, link_id, loc, descr, ts FROM file_notes WHERE note_id=?', (note_id, ) )
+	rec = recs.fetchone()
+	recs.close()
+	return rec
+
 def dbGetLinkPartners(conn, from_link_id, show_link_descr = False):
 	rets = ([], []); conds = ('link_from', 'link_to');
 	for i in range(len(conds)):
@@ -547,7 +567,30 @@ def dbGetLinkPartners(conn, from_link_id, show_link_descr = False):
 			rets[i].append(rec)
 			rec = recs.fetchone()
 		recs.close()
-	return rets	
+	return rets
+
+def dbHasLinks(conn, link_id):
+	ret = False; conds = ('link_from', 'link_to');
+	for i in range(len(conds)):
+		cond = conds[i]
+		recs = conn.execute('SELECT link_id FROM file_links WHERE {}=?'.format(cond), (link_id, ))
+		rec = recs.fetchone(); ret = ret or rec != None; recs.close();
+	return ret
+
+def dbHasNotes(conn, link_id):
+	ret = []
+	recs = conn.execute('SELECT note_id FROM file_notes WHERE link_id=?', (link_id, ) )
+	rec = recs.fetchone(); recs.close(); return rec != None;
+
+def dbGetNotes(conn, link_id, show_note_descr = False):
+	ret = []
+	recs = conn.execute('SELECT note_id, loc{} FROM file_notes WHERE link_id=?'.format(', descr' if show_note_descr else ''), (link_id, ) )
+	rec = recs.fetchone()
+	while (rec != None):
+		ret.append(rec)
+		rec = recs.fetchone()
+	recs.close()
+	return ret
 
 def dbGetLinkPartnerStrings(conn, link_id, show_link_descr = False):
 	def format_descr_has(x, show_link_descr):
@@ -559,6 +602,10 @@ def dbGetLinkPartnerStrings(conn, link_id, show_link_descr = False):
 	ret.extend(['{} {}{}'.format(x[3], x[2], format_descr(x, show_link_descr)) for x in ret1])
 	ret.extend(['{} {}{}'.format(x[1], x[3], format_descr(x, show_link_descr)) for x in ret2])
 	return ret
+
+def dbGetNoteStrings(conn, link_id, show_note_descr = False):
+	notes = dbGetNotes(conn, link_id, show_note_descr)
+	return ['{} : {}'.format(x[1], x[2]) for x in notes] if show_note_descr else [x[1] for x in notes]
 
 def flattags(tags):
 	flat = [k if (len(v)==0) else '{}:{}'.format(k,v) for k,v in tags.items()]
@@ -589,7 +636,16 @@ def printTagList(lst, sep, col1, col2, coldeep):
 	print_col('default')
 	print ''
 
-def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = None, len_prefix = 0, show_link_descr = False):
+def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = None, len_prefix = 0, show_link_descr = False, show_notes = False, show_note_descr = False):
+	def printList(lst, len_prefix, bcol = 'bblue', fcol = 'default', lbreak = False):
+		if len(lst) == 0:
+			return
+		print ''.join([' ']*(len_prefix+2)),
+		for iti in range(len(lst)):
+			print_col('bwhite'); print '{}'.format(iti+1),; print_col(fcol); print_col(bcol);
+			print u' {} {}'.format(lst[iti], '\n' if lbreak else ''),
+		print_col('bwhite'); print ' ',
+		print_col('bdefault'); print_col('default'); print '';
 	if mode > 0:
 		if (show_ts):
 			print '<{}>'.format(entry['ts'].strftime('%d-%b-%Y')),
@@ -609,13 +665,10 @@ def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = N
 			print_col('bdefault'); print '';
 			if show_links and len(entry['link_id']):
 				partners = dbGetLinkPartnerStrings(conn_db, entry['link_id'], show_link_descr)
-				if len(partners):
-					print ''.join([' ']*(len_prefix+2)),
-					for iti in range(len(partners)):
-						print_col('bwhite'); print '{}'.format(iti+1),; print_col('bblue');
-						print u' {} '.format(partners[iti]),
-					print_col('bwhite'); print ' ',
-					print_col('bdefault'); print '';
+				printList(partners, len_prefix, 'bblue')
+			if show_notes and len(entry['link_id']):
+				notes = dbGetNoteStrings(conn_db, entry['link_id'], show_note_descr)
+				printList(notes, len_prefix, 'bdefault', 'yellow', show_note_descr)
 	else:
 		print entry['hashid'], entry['fname'], entry['ts'], entry['name'], entry['tags']
 
@@ -906,7 +959,7 @@ def enter_assisted_input():
 		script = "tell application \"Preview\" to close (every window whose name begins with \"{}\")".format(entry['fname'])
 		runUnpiped(['osascript', '-e', "{}".format(script)])
 
-	def filterEntries(entries, filters):
+	def filterEntries(entries, filters, conn):
 		filtered = []
 		for e in entries:
 			fpass = True
@@ -919,7 +972,9 @@ def enter_assisted_input():
 					elif (f['type'] == 'time'):
 						fpass = fpass and matchTime(f['pat'], e['ts'])
 					elif (f['type'] == 'linked'):
-						fpass = fpass and len(e['link_id']) > 0
+						fpass = fpass and len(e['link_id']) > 0 and dbHasLinks(conn, e['link_id'])
+					elif (f['type'] == 'noted'):
+						fpass = fpass and len(e['link_id']) > 0 and dbHasNotes(conn, e['link_id'])
 				else:
 					break
 			if (fpass):
@@ -1067,22 +1122,23 @@ def enter_assisted_input():
 					ei = tinfo['entry_list'][i]
 					textSearchPrint(ei, entries[ei], tinfo['entry_errs'][i], tinfo['entry_lines'][i])
 
-	def listEntries(entries, show_ts=False, show_links = False, conn_db = None):
+	def listEntries(entries, show_ts=False, show_links = False, conn_db = None, show_notes = False):
 		for ie in range(len(entries)):
 			prefix = '{}. '.format(ie+1)
 			print prefix,
-			printEntry(entries[ie], show_ts=show_ts, show_links=show_links, conn_db = conn_db, len_prefix = len(prefix));
+			printEntry(entries[ie], show_ts=show_ts, show_links=show_links, conn_db = conn_db, len_prefix = len(prefix), show_notes = show_notes);
 
-	def handle_cd(filters, entries, time_based, newentries, filt, cd_time_based, show_links, conn_db):
-		newentries = sortEntries( filterEntries(entries[-1], [filt]), cd_time_based )
+	def handle_cd(filters, entries, time_based, newentries, filt, cd_time_based, show_links, conn_db, show_notes):
+		newentries = sortEntries( filterEntries(entries[-1], [filt], conn_db), cd_time_based )
 		if (len(newentries)):
 			filters.append(filt); entries.append( newentries ); time_based.append(cd_time_based);
 			if (len( newentries ) <= 24):
-				listEntries( entries[-1], show_ts=cd_time_based, show_links = show_links, conn_db = conn_db )
+				listEntries( entries[-1], show_ts=cd_time_based, show_links = show_links, conn_db = conn_db, show_notes = show_notes )
 		else:
 			print ' empty...'
 
 	cur_time_based = False; cur_show_links = True;
+	cur_show_notes = True;
 	conn = dbStartSession(g_dbpath)
 	filters, entries, time_based = reset(conn, cur_time_based)
 	viewEntryHist = []
@@ -1110,10 +1166,14 @@ def enter_assisted_input():
 				cur_show_links = True
 			elif (cmd in ['nolinks', '-links']):
 				cur_show_links = False
+			elif (inp in ['notes', '+notes']):
+				cur_show_notes = True
+			elif (cmd in ['nonotes', '-notes']):
+				cur_show_notes = False
 			elif (cmd == 'r' or cmd == 'reset'):
 				filters, entries = reset(conn, cur_time_based)
 			elif (cmd == 'ls' or cmd == 'l' or cmd == 'tls'):
-				listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]), show_links = cur_show_links, conn_db = conn )
+				listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]), show_links = cur_show_links, conn_db = conn, show_notes = cur_show_notes )
 			elif (cmd == 'tags' or cmd == 't'):
 				tags = {}
 				for e in entries[-1]:
@@ -1150,8 +1210,8 @@ def enter_assisted_input():
 							filter2[0] = {'type':'tag', 'pat':choices[0]}
 					if (filter2[0] is not None):
 						cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-						newentries = sortEntries( filterEntries(entries[-1], filter2), cd_time_based )
-						handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn)
+						newentries = sortEntries( filterEntries(entries[-1], filter2), cd_time_based, conn )
+						handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn, cur_show_notes)
 						if (len(newentries) == 0 and cmd == 'cd' and repeat_count == 0):
 							print ' trying a search instead...'
 							repeat_count = 1; repeat = True;
@@ -1161,28 +1221,32 @@ def enter_assisted_input():
 						print ' empty...'
 						if (cmd == 'cd' and repeat_count == 0):
 							repeat_count = 1; repeat = True;
-			elif (cmd == 'cn'):
-				if (len(input_splt) == 2):
-					tag = input_splt[1]
-					filter = {'type':'name', 'pat':tag}
-					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-					newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
-					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn)
+			elif (cmd == 'cn' and len(input_splt) >= 2):
+				tag = input_splt[1]
+				filter = {'type':'name', 'pat':tag}
+				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+				newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
 			elif (cmd == 'ct'):
 				pat = fixupTimePat(' '.join([x for x in input_splt[1:] if x != '-t']))
 				if (len(pat)):
 					filter = {'type':'time', 'pat':pat}
 					cd_time_based = True if ('-t' not in input_splt) else False
-					newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
-					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn)
+					newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
 				else:
 					print ' invalid pattern...'
 			elif (cmd == 'cl'):
 				filter = {'type':'linked', 'pat':'linked'}
 				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-				newentries = sortEntries( filterEntries(entries[-1], [filter]), cd_time_based )
-				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn)
-			elif (cmd == 'lid'):
+				newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, True, conn, False)
+			elif (inp == 'cn'):
+				filter = {'type':'noted', 'pat':'noted'}
+				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+				newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, False, conn, True)
+			elif (cmd in ['lid', 'nid']):
 				if (len(input_splt) == 3):
 					ei = int(input_splt[1])-1; entry = entries[-1][ei]; lid = input_splt[2];
 					if (entry['link_id'] != lid):
@@ -1193,11 +1257,22 @@ def enter_assisted_input():
 				if (len(input_splt) >= 4):
 					link_from = input_splt[1]; link_type = input_splt[2]; link_to = input_splt[3]; link_desc = ' '.join(input_splt[4:]);
 					dbAddLink(conn, link_from, link_to, link_type, link_desc)
+			elif (cmd == 'note'):
+				if (len(input_splt) >= 3):
+					link_id = input_splt[1]; note_loc = input_splt[2]; note_desc = ' '.join(input_splt[3:]);
+					if is_int(link_id):
+						link_id = entry = entries[-1][int(link_id)]['link_id']
+					dbAddNote(conn, link_id, note_loc, note_desc)
 			elif (cmd == 'links'):
 				if (len(input_splt) == 2):
 						ei = int(input_splt[1])-1; entry = entries[-1][ei];
 						prefix = ' '; print prefix;
 						printEntry(entry, show_ts=cur_time_based, show_links=True, conn_db = conn, len_prefix = len(prefix), show_link_descr = True)
+			elif (cmd == 'notes'):
+				if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1; entry = entries[-1][ei];
+						prefix = ' '; print prefix;
+						printEntry(entry, show_ts=cur_time_based, conn_db = conn, len_prefix = len(prefix), show_notes = True, show_note_descr = True)
 			elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
 				if (len(input_splt) == 2):
 					ei = int(input_splt[1])-1
