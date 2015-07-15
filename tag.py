@@ -1210,7 +1210,7 @@ def enter_assisted_input():
 							filter2[0] = {'type':'tag', 'pat':choices[0]}
 					if (filter2[0] is not None):
 						cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-						newentries = sortEntries( filterEntries(entries[-1], filter2), cd_time_based, conn )
+						newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
 						handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn, cur_show_notes)
 						if (len(newentries) == 0 and cmd == 'cd' and repeat_count == 0):
 							print ' trying a search instead...'
