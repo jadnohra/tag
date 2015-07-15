@@ -460,7 +460,7 @@ def dbEndSession(conn):
 def dbUpgrade(conn):
 	#conn.execute("alter table file_links add column 'link_type' 'TEXT'")
 	#conn.execute('DROP TABLE file_notes')
-	conn.execute('CREATE TABLE file_notes(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
+	#conn.execute('CREATE TABLE file_notes(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
 	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
 	conn.commit()
