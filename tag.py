@@ -56,32 +56,6 @@ def init_getch():
 	return None
 getch = init_getch()
 
-def getch2():
-	fd = sys.stdin.fileno()
-
-	oldterm = termios.tcgetattr(fd)
-	newattr = termios.tcgetattr(fd)
-	newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
-	termios.tcsetattr(fd, termios.TCSANOW, newattr)
-
-	oldflags = fcntl.fcntl(fd, fcntl.F_GETFL)
-	fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
-
-	c = []
-	try:
-		while len(c) == 0:
-			try:
-				while 1:
-					c.append(sys.stdin.read(1))
-				break
-			except IOError:
-				time.sleep(0.03)
-				pass
-	finally:
-		termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
-		fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
-	return c
-
 def vt_hist_create():
 	return { 'list':[], 'max':30, 'index':0  }
 
