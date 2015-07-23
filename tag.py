@@ -17,6 +17,7 @@ import subprocess
 import traceback
 import threading
 import multiprocessing
+import math
 
 # synonym: (lin-alg, l-lag)
 # search: lin-alg:lvl-0 will match l-alg:(eigen, lvl-0)
@@ -25,7 +26,37 @@ import multiprocessing
 Classif = { 'math' : { 'lin-alg' : { 'eigen' }, 'opt' : {} } }
 Tags = { 'title' : 'test1', 'eigen' : {'lvl0':'', 'impl':''}, 'lvl1' : { 'lin-alg':'', 'opt':'' } }
 
-def getch():
+
+def init_getch():
+	def init_getch_win():
+		from msvcrt import getch as win_getch
+		return win_getch
+	def init_getch_posix():
+		import tty,sys,termios
+		def posix_getch():
+			fd = sys.stdin.fileno(); old_settings = termios.tcgetattr(fd);
+			try:
+				tty.setraw(sys.stdin.fileno());	ch = sys.stdin.read(1);
+			finally:
+				termios.tcsetattr(fd, termios.TCSADRAIN, old_settings);
+				if ord(ch) == 13:
+					return '\n'
+				elif ch == '\x1B':
+					return [ch, posix_getch(), posix_getch()]
+				else:
+					return ch
+		return posix_getch
+	impls = [init_getch_win, init_getch_posix]
+	for impl in impls:
+		try:
+			return impl()
+		except:
+			#traceback.print_exc()
+			pass
+	return None
+getch = init_getch()
+
+def getch2():
 	fd = sys.stdin.fileno()
 
 	oldterm = termios.tcgetattr(fd)
@@ -43,7 +74,9 @@ def getch():
 				while 1:
 					c.append(sys.stdin.read(1))
 				break
-			except IOError: pass
+			except IOError:
+				time.sleep(0.03)
+				pass
 	finally:
 		termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
 		fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
@@ -63,6 +96,7 @@ def vt_edit(prefix, initial, hist = None):
 	while True:
 		print '\x1B[2K', '\r{} {}'.format(prefix, ''.join(inpchars)),
 		pre_inp = getch()
+		#print '[{}]'.format(pre_inp[0] == '\x1B')
 		if (len(pre_inp) >= 3 and pre_inp[0:3] == ['\x1B', '[', 'A'] and hist):
 			if (hist['index'] >= -len(hist['list'])):
 				hist['index'] = hist['index']-1
@@ -278,7 +312,7 @@ def largv_geti(i, dflt):
 def is_int(str):
 	try:
 		i = int(str); return True;
-	except:
+	except ValueError:
 		return False
 
 def runUnpiped(args):
@@ -1105,16 +1139,18 @@ def enter_assisted_input():
 				return [l[i:i + n] for i in range(0, len(l), n)]
 			print ' Using {} threads...'.format(nthreads)
 			eis = range(len(entries))
-			teis = chunks(eis, len(eis)/nthreads)
+			teis = chunks(eis, int(math.ceil(float(len(eis))/float(nthreads))))
 			tinfos = []
 			for ti in range(len(teis)):
 				tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
 				if len(teis[ti]):
+					print threading.active_count()
 					t = threading.Thread(target=textSearchThread, args=(teis[ti],entries,tinfo['entry_list'],tinfo['entry_errs'],tinfo['entry_lines']))
 					tinfo['thread'] = t
 					tinfos.append(tinfo)
 					t.setDaemon(True)
 					t.start()
+					print threading.active_count()
 			for tinfo in tinfos:
 				tinfo['thread'].join()
 			for tinfo in tinfos:
