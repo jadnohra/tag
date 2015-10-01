@@ -19,6 +19,8 @@ import threading
 import multiprocessing
 import math
 
+#https://docs.python.org/2/library/plistlib.html
+#http://apple.stackexchange.com/questions/194503/where-is-preview-storing-the-data-to-reopen-a-pdf-at-the-last-page-os-x-lion
 # synonym: (lin-alg, l-lag)
 # search: lin-alg:lvl-0 will match l-alg:(eigen, lvl-0)
 # add, remove
@@ -786,11 +788,11 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 		epos = -1
 		items = []
 		if ename and nameFirst:
-			items.extend([ {'str':'{}'.format(entry['name']), 'src':'name'} ])
+			items.extend([ {'str':u'{}'.format(entry['name']), 'src':'name'} ])
 		if etags:
 			items.extend([{'str':x, 'src':'tag'} for x in flattags(entry['tags']) ] )
 		if ename and (not nameFirst):
-			items.extend([ {'str':'{}'.format(entry['name']), 'src':'name'} ])
+			items.extend([ {'str':u'{}'.format(entry['name']), 'src':'name'} ])
 		prefix = ' : '
 		while 1:
 			lpos = 0
@@ -871,6 +873,7 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 				newflattags.append(it['str'])
 		if etags:
 			editFinalizeTags(entry, ','.join(newflattags))
+		return True	
 	except:
 		traceback.print_exc()
 		e = sys.exc_info()[0]
@@ -1118,13 +1121,13 @@ def enter_assisted_input():
 			for ti in range(len(teis)):
 				tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
 				if len(teis[ti]):
-					print threading.active_count()
+					#print threading.active_count()
 					t = threading.Thread(target=textSearchThread, args=(teis[ti],entries,tinfo['entry_list'],tinfo['entry_errs'],tinfo['entry_lines']))
 					tinfo['thread'] = t
 					tinfos.append(tinfo)
 					t.setDaemon(True)
 					t.start()
-					print threading.active_count()
+					#print threading.active_count()
 			for tinfo in tinfos:
 				tinfo['thread'].join()
 			for tinfo in tinfos:
