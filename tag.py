@@ -1222,7 +1222,8 @@ def enter_assisted_input():
 							matches = matchAllTags(phrase, entries[-1])
 							choices = printAndChoose(matches)
 							if (len(choices)):
-								filter2[0] = {'type':'tag', 'pat':choices[0]}
+								filter2[0] = {'type':'tag', 'pat':matches[choices[0]]}
+						print filter2
 						if (filter2[0] is not None):
 							cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
 							newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
