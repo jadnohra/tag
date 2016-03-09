@@ -1491,7 +1491,7 @@ def tagImport(conn, ipath, updating):
 
 def printAndChoose(list, postindex = False, forceChoose = False):
 	if (len(list) == 0): return []
-	if (len(list) == 1 and forceChoose == False): return list
+	if (len(list) == 1 and forceChoose == False): return [0]
 	for i in range(len(list)):
 		print_coli(gAltCols[i % len(gAltCols)])
 		if postindex:
