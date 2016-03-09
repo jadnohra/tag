@@ -1114,7 +1114,8 @@ def enter_assisted_input():
 			def chunks(l, n):
 				n = max(1, n)
 				return [l[i:i + n] for i in range(0, len(l), n)]
-			print ' Using {} threads...'.format(nthreads)
+			print ' Searching...'
+			#print ' Using {} threads...'.format(nthreads)
 			eis = range(len(entries))
 			teis = chunks(eis, int(math.ceil(float(len(eis))/float(nthreads))))
 			tinfos = []
@@ -1128,6 +1129,8 @@ def enter_assisted_input():
 					t.setDaemon(True)
 					t.start()
 					#print threading.active_count()
+			#joined = [False]*len(tinfos)
+			#while(!all(joined)):
 			for tinfo in tinfos:
 				tinfo['thread'].join()
 			for tinfo in tinfos:
@@ -1223,7 +1226,7 @@ def enter_assisted_input():
 							choices = printAndChoose(matches)
 							if (len(choices)):
 								filter2[0] = {'type':'tag', 'pat':matches[choices[0]]}
-						print filter2
+						#print filter2
 						if (filter2[0] is not None):
 							cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
 							newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
