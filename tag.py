@@ -65,7 +65,7 @@ def vt_hist_add(hist, item, max = 30):
 	if item not in hist:
 		hist.append(item)
 	if len(hist) > max:
-		hist.remove(0)
+		hist.pop(0)
 
 def vt_edit(prefix, initial, hist = None):
 	inpchars = [x for x in initial]
@@ -1246,6 +1246,7 @@ def enter_assisted_input():
 					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
 					newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
 					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
+					vt_hist_add(cmd_hist['list'], inp)
 				elif (cmd == 'ct'):
 					pat = fixupTimePat(' '.join([x for x in input_splt[1:] if x != '-t']))
 					if (len(pat)):
