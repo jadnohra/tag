@@ -1189,7 +1189,7 @@ def enter_assisted_input():
 				elif (cmd in ['nonotes', '-notes']):
 					cur_show_notes = False
 				elif (cmd == 'r' or cmd == 'reset'):
-					filters, entries = reset(conn, cur_time_based)
+					filters, entries, time_based = reset(conn, cur_time_based)
 				elif (cmd == 'ls' or cmd == 'l' or cmd == 'tls'):
 					listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]), show_links = cur_show_links, conn_db = conn, show_notes = cur_show_notes )
 				elif (cmd == 'tags' or cmd == 't'):
