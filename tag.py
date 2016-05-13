@@ -1211,12 +1211,12 @@ def enter_assisted_input():
 						or cmd == 'cd..'):
 					if (len(filters)):
 						filters.pop(); entries.pop(); time_based.pop();
-				elif (cmd == 'cd' or cmd == 'fcd'):
+				elif (cmd == 'cd' or cmd == 'fcd' or cmd == 'c'):
 					filter2 = [None]
 					repeat_count = 0; repeat = True;
 					while repeat:
 						repeat = False
-						if (cmd == 'cd' and repeat_count == 0):
+						if ((cmd == 'cd' or cmd == 'c') and repeat_count == 0):
 							if (len(input_splt) == 2):
 								tag = input_splt[1]
 								filter2[0] = {'type':'tag', 'pat':tag}
@@ -1231,14 +1231,14 @@ def enter_assisted_input():
 							cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
 							newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
 							handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn, cur_show_notes)
-							if (len(newentries) == 0 and cmd == 'cd' and repeat_count == 0):
+							if (len(newentries) == 0 and (cmd == 'cd' or cmd == 'c') and repeat_count == 0):
 								print ' trying a search instead...'
 								repeat_count = 1; repeat = True;
 							else:
 								vt_hist_add(cmd_hist['list'], inp)
 						else:
 							print ' empty...'
-							if (cmd == 'cd' and repeat_count == 0):
+							if ((cmd == 'cd' or cmd == 'c') and repeat_count == 0):
 								repeat_count = 1; repeat = True;
 				elif (cmd == 'cn' and len(input_splt) >= 2):
 					tag = input_splt[1]
