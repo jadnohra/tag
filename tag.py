@@ -957,7 +957,7 @@ def bibToDict(str):
 				if (ffi < ffo):
 					nfi = nfi+1; fi = ffi;
 				else:
-					nfo = nfo+1; fi = ffi;
+					nfo = nfo+1; fi = ffo;
 		return (sfi, ffo)
 	dict = {}
 	fi = str.find('@')
@@ -965,11 +965,11 @@ def bibToDict(str):
 		str = str[0+1:]
 		fi = str.find('{')
 		if fi > 0:
-			dict['_type'] = str[:fi]
+			dict['_@'] = str[:fi]
 			str = str[fi+1:]
 			fi = str.find(',')
 			if fi > 0:
-				dict['_tag'] = str[:fi]
+				dict['_ref'] = str[:fi]
 				str = str[fi+1:]
 				while (1):
 					fi = str.find('=')
@@ -981,6 +981,9 @@ def bibToDict(str):
 							val = str[fi+1:fo]
 							dict[key.strip()] = val.strip()
 							str = str[fo+1:]
+							fi = str.find(',')
+							if fi >= 0:
+								str = str[fi+1:]
 					else:
 						break
 	return dict
@@ -991,10 +994,15 @@ def extractBib(name, index = 1):
 	(out, err) = runPipedShell(unistr(' '.join(args)))
 	if len(err):
 		print_col('red'); print err; print_col('default');
-	if len(out) == 0:
-		out = "@misc{{c{}, title = {{ {} }} }}".format(index, name)
-	print bibToDict(out)
+	#print bibToDict(out)
 	return out
+
+def bibFromDict(dict):
+	comps = [ '@{}{{'.format(dict.get('_@', 'n/a')), ' {}'.format(dict.get('_ref', 'n/a')) ]
+	for k in [x for x in dict.keys() if not x.startswith('_')]:
+		comps.append(' , {} = {{ {} }}'.format(k, dict[k]))
+	comps.append('}')
+	return '\n'.join(comps)
 
 def enter_assisted_input():
 
@@ -1159,7 +1167,6 @@ def enter_assisted_input():
 					(elines, lines) = textSearchEntry(ei, entries[ei], phrase)
 					if (len(elines) or len(lines)):
 						entry_list.append(ei); entry_errs.append(elines); entry_lines.append(lines)
-
 			def chunks(l, n):
 				n = max(1, n)
 				return [l[i:i + n] for i in range(0, len(l), n)]
@@ -1201,6 +1208,18 @@ def enter_assisted_input():
 				listEntries( entries[-1], show_ts=cd_time_based, show_links = show_links, conn_db = conn_db, show_notes = show_notes )
 		else:
 			print ' empty...'
+
+	def bibExtractThread(title, index, bib_out, bibi):
+		try:
+			bib_str = extractBib(title, index).strip()
+			if len(bib_str):
+				bib_dict = bibToDict(bib_str)
+				bib_dict['_ref'] = 'c{}'.format(index)
+				bib_out[bibi] = [bibFromDict(bib_dict), bib_dict]
+				return
+		except:
+			traceback.print_exc();
+		bib_out[bibi] = ['', {}]
 
 	cur_time_based = False; cur_show_links = True;
 	cur_show_notes = True;
@@ -1384,13 +1403,13 @@ def enter_assisted_input():
 						dbUpdateEntry(conn, entry)
 				elif (cmd == 'scan'):
 					spath = None if (g_lastscan is None) else g_lastscan[0]
-					time =  None if (g_lastscan is None) else g_lastscan[1]
+					s_time =  None if (g_lastscan is None) else g_lastscan[1]
 					if (len(input_splt) >= 2):
 						spath = input_splt[1]
 					if (len(input_splt) >= 3):
-						time = input_splt[2]
+						s_time = input_splt[2]
 					if (spath is not None):
-						scanImport(conn, spath, '1h' if time is None else time)
+						scanImport(conn, spath, '1h' if s_time is None else s_time)
 					filters, entries, time_based = reset(conn, cur_time_based)
 				elif (cmd == '+' or cmd == '-'):
 					if (len(input_splt) == 3):
@@ -1441,7 +1460,8 @@ def enter_assisted_input():
 					dbRemoveEntry(conn, entry)
 					tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
 					os.remove(tpath)
-				elif (cmd == 'bib'):
+				elif (cmd == 'bib' or cmd == 'bibr' or cmd == 'bibf'):
+					bib_force = (cmd == 'bibf'); bib_strict = (cmd == 'bib');
 					bib_list = []
 					if ((len(input_splt) == 2) and (input_splt[1] == '*')) or (len(input_splt) == 1):
 						bib_list = [x['name'] for x in entries[-1]]
@@ -1452,10 +1472,37 @@ def enter_assisted_input():
 						bib_list = [ ' '.join(input_splt[1:]) ]
 					print ' Extracting...'
 					if len(bib_list):
-						bib_out = []
+						tinfos = []; bib_out = [None]*len(bib_list);
 						for bibi in range(len(bib_list)):
-							bib_out.append(extractBib(bib_list[bibi], bibi+1).strip())
-					print '\n', ',\n\n'.join(bib_out), '\n'
+							tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
+							t = threading.Thread(target=bibExtractThread, args=(bib_list[bibi], bibi+1, bib_out, bibi))
+							tinfo['thread'] = t; tinfos.append(tinfo); t.setDaemon(True); t.start();
+					bib_check = [False]*len(bib_out)
+					print ' ',
+					while len([x for x in bib_check if x]) < len(bib_check):
+							for i in range(len(bib_check)):
+								if bib_check[i] == False and bib_out[i] != None:
+									bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+								time.sleep(0.5)
+					print '\n'
+					for tinfo in tinfos:
+						tinfo['thread'].join()
+					for bibi in range(len(bib_out)):
+						bib_dict = bib_out[bibi][1]
+						in_words = bib_list[bibi].split()
+						out_words = bib_dict.get('title', '').split()
+						if len(in_words) != len(out_words):
+							if bib_strict:
+								continue
+							if len(out_words) == 0 and bib_force == False:
+								continue
+							if len(out_words) == 0:
+								bib_dict['_@'] = 'misc'; bib_dict['_ref'] = bib_list[bibi];
+							bib_dict['todo'] = 'true';
+							bib_out[bibi][0] = bibFromDict(bib_dict);
+						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print bib_out[bibi][0]; print_col('default'); print ',\n'
+						#out = "@misc{{c{}, title = {{ {} }} }, todo = {{true}}}".format(index, name)
+					#print '\n', ',\n\n'.join([x[0] for x in bib_out]), '\n'
 		except:
 			#dbEndSession(conn)
 			print_col('red'); print ''; traceback.print_exc(); print_col('default');
