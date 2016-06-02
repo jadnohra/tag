@@ -946,6 +946,45 @@ def listAll(conn):
 	for e in entries:
 		printEntry(e)
 
+def bibToDict(str):
+	def findMatched(str, pat_i, pat_o):
+		nfi = 0; nfo = 0;
+		sfi = str.find(pat_i);
+		if (sfi >= 0):
+			nfi = 1; fi = sfi;
+			while (nfi != nfo) and (fi >= 0):
+				ffi = str.find(pat_i, fi+1); ffo = str.find(pat_o, fi+1);
+				if (ffi < ffo):
+					nfi = nfi+1; fi = ffi;
+				else:
+					nfo = nfo+1; fi = ffi;
+		return (sfi, ffo)
+	dict = {}
+	fi = str.find('@')
+	if  fi == 0:
+		str = str[0+1:]
+		fi = str.find('{')
+		if fi > 0:
+			dict['_type'] = str[:fi]
+			str = str[fi+1:]
+			fi = str.find(',')
+			if fi > 0:
+				dict['_tag'] = str[:fi]
+				str = str[fi+1:]
+				while (1):
+					fi = str.find('=')
+					if fi >= 0:
+						key = str[:fi]
+						fi = str.find('{')
+						if fi >= 0:
+							(fi, fo) = findMatched(str, '{', '}')
+							val = str[fi+1:fo]
+							dict[key.strip()] = val.strip()
+							str = str[fo+1:]
+					else:
+						break
+	return dict
+
 def extractBib(name, index = 1):
 	this_dir = os.path.dirname(os.path.abspath(__file__))
 	args = ['python', os.path.join(this_dir, 'scholar.py'), '-c', '1', '--citation', 'bt', '-t', '--phrase', '"{}"'.format(name)]
@@ -954,6 +993,7 @@ def extractBib(name, index = 1):
 		print_col('red'); print err; print_col('default');
 	if len(out) == 0:
 		out = "@misc{{c{}, title = {{ {} }} }}".format(index, name)
+	print bibToDict(out)
 	return out
 
 def enter_assisted_input():
