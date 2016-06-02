@@ -946,6 +946,15 @@ def listAll(conn):
 	for e in entries:
 		printEntry(e)
 
+def extractBib(name, index = 1):
+	this_dir = os.path.dirname(os.path.abspath(__file__))
+	args = ['python', os.path.join(this_dir, 'scholar.py'), '-c', '1', '--citation', 'bt', '-t', '--phrase', '"{}"'.format(name)]
+	(out, err) = runPipedShell(unistr(' '.join(args)))
+	if len(err):
+		print_col('red'); print err; print_col('default');
+	if len(out) == 0:
+		out = "@misc{{c{}, title = {{ {} }} }}".format(index, name)
+	return out
 
 def enter_assisted_input():
 
@@ -1392,6 +1401,20 @@ def enter_assisted_input():
 					dbRemoveEntry(conn, entry)
 					tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
 					os.remove(tpath)
+				elif (cmd == 'bib'):
+					bib_list = []
+					if ((len(input_splt) == 2) and (input_splt[1] == '*')) or (len(input_splt) == 1):
+						bib_list = [x['name'] for x in entries[-1]]
+					elif (len(input_splt) == 2) and (input_splt[1].isdigit()):
+						ei = int(input_splt[1])-1
+						bib_list = [entries[-1][ei]['name']]
+					else:
+						bib_list = [ ' '.join(input_splt[1:]) ]
+					print ' Extracting...'
+					bib_out = []
+					for bibi in range(len(bib_list)):
+						bib_out.append(extractBib(bib_list[bibi], bibi+1))
+					print ',\n'.join(bib_out)
 		except:
 			#dbEndSession(conn)
 			print_col('red'); print ''; traceback.print_exc(); print_col('default');
