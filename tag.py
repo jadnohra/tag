@@ -19,6 +19,8 @@ import threading
 import multiprocessing
 import math
 
+#https://docs.python.org/2/library/plistlib.html
+#http://apple.stackexchange.com/questions/194503/where-is-preview-storing-the-data-to-reopen-a-pdf-at-the-last-page-os-x-lion
 # synonym: (lin-alg, l-lag)
 # search: lin-alg:lvl-0 will match l-alg:(eigen, lvl-0)
 # add, remove
@@ -63,7 +65,7 @@ def vt_hist_add(hist, item, max = 30):
 	if item not in hist:
 		hist.append(item)
 	if len(hist) > max:
-		hist.remove(0)
+		hist.pop(0)
 
 def vt_edit(prefix, initial, hist = None):
 	inpchars = [x for x in initial]
@@ -786,11 +788,11 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 		epos = -1
 		items = []
 		if ename and nameFirst:
-			items.extend([ {'str':'{}'.format(entry['name']), 'src':'name'} ])
+			items.extend([ {'str':u'{}'.format(entry['name']), 'src':'name'} ])
 		if etags:
 			items.extend([{'str':x, 'src':'tag'} for x in flattags(entry['tags']) ] )
 		if ename and (not nameFirst):
-			items.extend([ {'str':'{}'.format(entry['name']), 'src':'name'} ])
+			items.extend([ {'str':u'{}'.format(entry['name']), 'src':'name'} ])
 		prefix = ' : '
 		while 1:
 			lpos = 0
@@ -871,6 +873,7 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 				newflattags.append(it['str'])
 		if etags:
 			editFinalizeTags(entry, ','.join(newflattags))
+		return True
 	except:
 		traceback.print_exc()
 		e = sys.exc_info()[0]
@@ -1111,20 +1114,23 @@ def enter_assisted_input():
 			def chunks(l, n):
 				n = max(1, n)
 				return [l[i:i + n] for i in range(0, len(l), n)]
-			print ' Using {} threads...'.format(nthreads)
+			print ' Searching...'
+			#print ' Using {} threads...'.format(nthreads)
 			eis = range(len(entries))
 			teis = chunks(eis, int(math.ceil(float(len(eis))/float(nthreads))))
 			tinfos = []
 			for ti in range(len(teis)):
 				tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
 				if len(teis[ti]):
-					print threading.active_count()
+					#print threading.active_count()
 					t = threading.Thread(target=textSearchThread, args=(teis[ti],entries,tinfo['entry_list'],tinfo['entry_errs'],tinfo['entry_lines']))
 					tinfo['thread'] = t
 					tinfos.append(tinfo)
 					t.setDaemon(True)
 					t.start()
-					print threading.active_count()
+					#print threading.active_count()
+			#joined = [False]*len(tinfos)
+			#while(!all(joined)):
 			for tinfo in tinfos:
 				tinfo['thread'].join()
 			for tinfo in tinfos:
@@ -1153,241 +1159,245 @@ def enter_assisted_input():
 	filters, entries, time_based = reset(conn, cur_time_based)
 	viewEntryHist = []
 	cmd_hist = vt_hist_create()
+	user_exit = False
+	while user_exit == False:
+		try:
+			while True:
+				pats = [x['pat'] for x in filters]; prefix = '/{} ({})>'.format('/'.join(pats), len(entries[-1]))
+				inp = vt_edit(prefix, '', cmd_hist)
+				#inp = raw_input(); print inp;
+				input_splt = inp.split(' ')
+				cmd = input_splt[0]
 
-	try:
-		while True:
-			pats = [x['pat'] for x in filters]; prefix = '/{} ({})>'.format('/'.join(pats), len(entries[-1]))
-			inp = vt_edit(prefix, '', cmd_hist)
-			#inp = raw_input(); print inp;
-			input_splt = inp.split(' ')
-			cmd = input_splt[0]
-
-			if (cmd == 'q'):
-				break
-			elif (cmd in ['time', '+time']):
-				cur_time_based = True
-				entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
-				time_based[-1] = cur_time_based
-			elif (cmd in ['-time', 'notime']):
-				cur_time_based = False
-				entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
-				time_based[-1] = cur_time_based
-			elif (inp in ['links', '+links']):
-				cur_show_links = True
-			elif (cmd in ['nolinks', '-links']):
-				cur_show_links = False
-			elif (inp in ['notes', '+notes']):
-				cur_show_notes = True
-			elif (cmd in ['nonotes', '-notes']):
-				cur_show_notes = False
-			elif (cmd == 'r' or cmd == 'reset'):
-				filters, entries = reset(conn, cur_time_based)
-			elif (cmd == 'ls' or cmd == 'l' or cmd == 'tls'):
-				listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]), show_links = cur_show_links, conn_db = conn, show_notes = cur_show_notes )
-			elif (cmd == 'tags' or cmd == 't'):
-				tags = {}
-				for e in entries[-1]:
-					etags = flattags(e['tags'])
-					for etag in etags:
-						tags[etag] = ''
-				tkeys = sorted(tags.keys())
-				for it in range(len(tkeys)):
-					print '{}, '.format(tkeys[it]),
-					if (it % 10 == 0 and it != 0):
-						print ''
-				print '\n{} tags\n'.format(len(tkeys))
-			elif ((cmd == 'cd' and len(input_splt) == 1)
-					or (cmd == 'cd' and input_splt[1] == '..')
-					or cmd == '..'
-					or cmd == '.'
-					or cmd == 'cd..'):
-				if (len(filters)):
-					filters.pop(); entries.pop(); time_based.pop();
-			elif (cmd == 'cd' or cmd == 'fcd'):
-				filter2 = [None]
-				repeat_count = 0; repeat = True;
-				while repeat:
-					repeat = False
-					if (cmd == 'cd' and repeat_count == 0):
-						if (len(input_splt) == 2):
-							tag = input_splt[1]
-							filter2[0] = {'type':'tag', 'pat':tag}
-					elif (cmd == 'fcd' or repeat_count > 0):
-						phrase = ' '.join(input_splt[1:])
-						matches = matchAllTags(phrase, entries[-1])
-						choices = printAndChoose(matches)
-						if (len(choices)):
-							filter2[0] = {'type':'tag', 'pat':choices[0]}
-					if (filter2[0] is not None):
-						cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-						newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
-						handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn, cur_show_notes)
-						if (len(newentries) == 0 and cmd == 'cd' and repeat_count == 0):
-							print ' trying a search instead...'
-							repeat_count = 1; repeat = True;
-						else:
-							vt_hist_add(cmd_hist['list'], inp)
-					else:
-						print ' empty...'
-						if (cmd == 'cd' and repeat_count == 0):
-							repeat_count = 1; repeat = True;
-			elif (cmd == 'cn' and len(input_splt) >= 2):
-				tag = input_splt[1]
-				filter = {'type':'name', 'pat':tag}
-				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-				newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
-				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
-			elif (cmd == 'ct'):
-				pat = fixupTimePat(' '.join([x for x in input_splt[1:] if x != '-t']))
-				if (len(pat)):
-					filter = {'type':'time', 'pat':pat}
-					cd_time_based = True if ('-t' not in input_splt) else False
-					newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
-					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
-				else:
-					print ' invalid pattern...'
-			elif (cmd == 'cl'):
-				filter = {'type':'linked', 'pat':'linked'}
-				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-				newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
-				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, True, conn, False)
-			elif (inp == 'cn'):
-				filter = {'type':'noted', 'pat':'noted'}
-				cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
-				newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
-				handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, False, conn, True)
-			elif (cmd in ['lid', 'nid']):
-				if (len(input_splt) == 3):
-					ei = int(input_splt[1])-1; entry = entries[-1][ei]; lid = input_splt[2];
-					if (entry['link_id'] != lid):
-						old_lid = entry['link_id']; entry['link_id'] = lid;
-						dbUpdateEntryLinkId(conn, entry)
-						print ' {} (was {})'.format(lid, old_lid)
-			elif (cmd == 'link'):
-				if (len(input_splt) >= 4):
-					link_from = input_splt[1]; link_type = input_splt[2]; link_to = input_splt[3]; link_desc = ' '.join(input_splt[4:]);
-					dbAddLink(conn, link_from, link_to, link_type, link_desc)
-			elif (cmd == 'note'):
-				if (len(input_splt) >= 3):
-					link_id = input_splt[1]; note_loc = input_splt[2]; note_desc = ' '.join(input_splt[3:]);
-					if is_int(link_id):
-						link_id = entry = entries[-1][int(link_id)]['link_id']
-					dbAddNote(conn, link_id, note_loc, note_desc)
-			elif (cmd == 'links'):
-				if (len(input_splt) == 2):
-						ei = int(input_splt[1])-1; entry = entries[-1][ei];
-						prefix = ' '; print prefix;
-						printEntry(entry, show_ts=cur_time_based, show_links=True, conn_db = conn, len_prefix = len(prefix), show_link_descr = True)
-			elif (cmd == 'notes'):
-				if (len(input_splt) == 2):
-						ei = int(input_splt[1])-1; entry = entries[-1][ei];
-						prefix = ' '; print prefix;
-						printEntry(entry, show_ts=cur_time_based, conn_db = conn, len_prefix = len(prefix), show_notes = True, show_note_descr = True)
-			elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
-				if (len(input_splt) == 2):
-					ei = int(input_splt[1])-1
-					entry = entries[-1][ei]
-					editUpdateEntry( conn, entry, cmd == 'e' or cmd == 'en', cmd == 'e' or cmd == 'et')
-			elif (cmd == 'el'):
-				if (len(input_splt) == 3):
-					try:
-						ei = int(input_splt[1])-1; li = int(input_splt[2])-1; entry = entries[-1][ei];
-						editUpdateLinkPartner( conn, entry, li)
-					except:
-						traceback.print_exc()
-			elif (cmd == 'o' or cmd == 'read' or cmd == 'view'):
-				if (len(input_splt) == 2):
-					ei = int(input_splt[1])-1
-					entry = entries[-1][ei]
-					viewEntryHist.append(entry)
-					viewEntry(entry)
-				else:
-					for e in viewEntryHist:
-						printEntry(entry)
-			elif (cmd == 'x' or cmd == 'close'):
-				entry = None
-				if (len(input_splt) == 2):
-					ei = int(input_splt[1])-1
-					entry = entries[-1][ei]
-				else:
-					if (len(viewEntryHist)):
-						entry = viewEntryHist.pop()
-				if (entry is not None):
-					closeViewEntry(entry)
-			elif (cmd == 'cleanup'):
-				centries = [x for x in entries[-1] if ('c' not in x['extra']) ]
-				print 'There are {} entries to clean.'.format(len(centries))
-				for ie in range(len(centries)):
-					print '{}. '.format(ie),
-					entry = centries[ie]
-					editUpdateEntry(conn, entry, True, True)
-					entry['extra'].append('c')
-					dbUpdateEntry(conn, entry)
-			elif (cmd == 'scan'):
-				spath = None if (g_lastscan is None) else g_lastscan[0]
-				time =  None if (g_lastscan is None) else g_lastscan[1]
-				if (len(input_splt) >= 2):
-					spath = input_splt[1]
-				if (len(input_splt) >= 3):
-					time = input_splt[2]
-				if (spath is not None):
-					scanImport(conn, spath, '1h' if time is None else time)
-				filters, entries, time_based = reset(conn, cur_time_based)
-			elif (cmd == '+' or cmd == '-'):
-				if (len(input_splt) == 3):
-					ei = int(input_splt[1])-1
-					entry = entries[-1][ei]
-					ntags = input_splt[2].split(',')
-					etags = copy.deepcopy(entry['tags'])
-					for ntag in ntags:
-						if (cmd == '+'):
-							entry['tags'][ntag] = ''
-						else:
-							if ntag in entry['tags']:
-								del entry['tags'][ntag]
-					modded = (etags != entry['tags'])
-					if (modded):
-						dbUpdateEntry(conn, entry)
-						print_col('green'); printEntry(entry, 1); print_col('default');
-			elif (cmd == '#'):
-				if (len(input_splt) == 2):
-					ei = int(input_splt[1])-1
-					entry = entries[-1][ei]
-					(elines, count) = textLengthEntry(entry)
-					printErrLines(ei, entry, elines)
-					print_col('green'); print ' {} words'.format(count); print_col('default');
-			elif (cmd == 'figs'):
-				if (len(input_splt) == 2):
-					ei = int(input_splt[1])-1
-					entry = entries[-1][ei]
-					(elines, count) = textCountEntry(entry, 'figure')
-					printErrLines(ei, entry, elines)
-					print_col('green'); print ' ~{} figures'.format(count/2); print_col('default');
-			elif (cmd == 'f' or cmd == 'find'):
-				phrase = ' '.join(input_splt[1:])
-				nthreads = max(1, multiprocessing.cpu_count()-1)
-				textSearchEntries(entries[-1], phrase, nthreads)
-			elif (cmd == 'ft'):
-				phrase = ' '.join(input_splt[1:])
-				matches = matchAllTags(phrase, entries[-1])
-				for it in range(len(matches)):
-						print '{}. {}, '.format(it+1, matches[it]),
+				if (cmd == 'q'):
+					user_exit = True
+					break
+				elif (cmd in ['time', '+time']):
+					cur_time_based = True
+					entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
+					time_based[-1] = cur_time_based
+				elif (cmd in ['-time', 'notime']):
+					cur_time_based = False
+					entries[-1] = sortEntries(entries[-1], time_based = cur_time_based)
+					time_based[-1] = cur_time_based
+				elif (inp in ['links', '+links']):
+					cur_show_links = True
+				elif (cmd in ['nolinks', '-links']):
+					cur_show_links = False
+				elif (inp in ['notes', '+notes']):
+					cur_show_notes = True
+				elif (cmd in ['nonotes', '-notes']):
+					cur_show_notes = False
+				elif (cmd == 'r' or cmd == 'reset'):
+					filters, entries, time_based = reset(conn, cur_time_based)
+				elif (cmd == 'ls' or cmd == 'l' or cmd == 'tls'):
+					listEntries( entries[-1], show_ts=(cmd == 'tls') or ('-t' in input_splt) or (time_based[-1]), show_links = cur_show_links, conn_db = conn, show_notes = cur_show_notes )
+				elif (cmd == 'tags' or cmd == 't'):
+					tags = {}
+					for e in entries[-1]:
+						etags = flattags(e['tags'])
+						for etag in etags:
+							tags[etag] = ''
+					tkeys = sorted(tags.keys())
+					for it in range(len(tkeys)):
+						print '{}, '.format(tkeys[it]),
 						if (it % 10 == 0 and it != 0):
 							print ''
-				print '\n{} tags\n'.format(len(matches))
-			elif (cmd == 'remove' or cmd == 'delete'):
-				ei = int(input_splt[1])-1
-				entry = entries[-1][ei]
-				print_col('red'); printEntry(entry, 1); print_col('default');
-				dbRemoveEntry(conn, entry)
-				tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
-				os.remove(tpath)
-
-	except:
-		dbEndSession(conn)
-		traceback.print_exc()
-		e = sys.exc_info()[0]
-		raise e
+					print '\n{} tags\n'.format(len(tkeys))
+				elif ((cmd == 'cd' and len(input_splt) == 1)
+						or (cmd == 'cd' and input_splt[1] == '..')
+						or cmd == '..'
+						or cmd == '.'
+						or cmd == 'cd..'):
+					if (len(filters)):
+						filters.pop(); entries.pop(); time_based.pop();
+				elif (cmd == 'cd' or cmd == 'fcd' or cmd == 'c'):
+					filter2 = [None]
+					repeat_count = 0; repeat = True;
+					while repeat:
+						repeat = False
+						if ((cmd == 'cd' or cmd == 'c') and repeat_count == 0):
+							if (len(input_splt) == 2):
+								tag = input_splt[1]
+								filter2[0] = {'type':'tag', 'pat':tag}
+						elif (cmd == 'fcd' or repeat_count > 0):
+							phrase = ' '.join(input_splt[1:])
+							matches = matchAllTags(phrase, entries[-1])
+							choices = printAndChoose(matches)
+							if (len(choices)):
+								filter2[0] = {'type':'tag', 'pat':matches[choices[0]]}
+						#print filter2
+						if (filter2[0] is not None):
+							cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+							newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
+							handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn, cur_show_notes)
+							if (len(newentries) == 0 and (cmd == 'cd' or cmd == 'c') and repeat_count == 0):
+								print ' trying a search instead...'
+								repeat_count = 1; repeat = True;
+							else:
+								vt_hist_add(cmd_hist['list'], inp)
+						else:
+							print ' empty...'
+							if ((cmd == 'cd' or cmd == 'c') and repeat_count == 0):
+								repeat_count = 1; repeat = True;
+				elif (cmd == 'cn' and len(input_splt) >= 2):
+					tag = input_splt[1]
+					filter = {'type':'name', 'pat':tag}
+					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+					newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
+					vt_hist_add(cmd_hist['list'], inp)
+				elif (cmd == 'ct'):
+					pat = fixupTimePat(' '.join([x for x in input_splt[1:] if x != '-t']))
+					if (len(pat)):
+						filter = {'type':'time', 'pat':pat}
+						cd_time_based = True if ('-t' not in input_splt) else False
+						newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+						handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
+					else:
+						print ' invalid pattern...'
+				elif (cmd == 'cl'):
+					filter = {'type':'linked', 'pat':'linked'}
+					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+					newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, True, conn, False)
+				elif (inp == 'cn'):
+					filter = {'type':'noted', 'pat':'noted'}
+					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
+					newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
+					handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, False, conn, True)
+				elif (cmd in ['lid', 'nid']):
+					if (len(input_splt) == 3):
+						ei = int(input_splt[1])-1; entry = entries[-1][ei]; lid = input_splt[2];
+						if (entry['link_id'] != lid):
+							old_lid = entry['link_id']; entry['link_id'] = lid;
+							dbUpdateEntryLinkId(conn, entry)
+							print ' {} (was {})'.format(lid, old_lid)
+				elif (cmd == 'link'):
+					if (len(input_splt) >= 4):
+						link_from = input_splt[1]; link_type = input_splt[2]; link_to = input_splt[3]; link_desc = ' '.join(input_splt[4:]);
+						dbAddLink(conn, link_from, link_to, link_type, link_desc)
+				elif (cmd == 'note'):
+					if (len(input_splt) >= 3):
+						link_id = input_splt[1]; note_loc = input_splt[2]; note_desc = ' '.join(input_splt[3:]);
+						if is_int(link_id):
+							link_id = entry = entries[-1][int(link_id)]['link_id']
+						dbAddNote(conn, link_id, note_loc, note_desc)
+				elif (cmd == 'links'):
+					if (len(input_splt) == 2):
+							ei = int(input_splt[1])-1; entry = entries[-1][ei];
+							prefix = ' '; print prefix;
+							printEntry(entry, show_ts=cur_time_based, show_links=True, conn_db = conn, len_prefix = len(prefix), show_link_descr = True)
+				elif (cmd == 'notes'):
+					if (len(input_splt) == 2):
+							ei = int(input_splt[1])-1; entry = entries[-1][ei];
+							prefix = ' '; print prefix;
+							printEntry(entry, show_ts=cur_time_based, conn_db = conn, len_prefix = len(prefix), show_notes = True, show_note_descr = True)
+				elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
+					if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1
+						entry = entries[-1][ei]
+						editUpdateEntry( conn, entry, cmd == 'e' or cmd == 'en', cmd == 'e' or cmd == 'et')
+				elif (cmd == 'el'):
+					if (len(input_splt) == 3):
+						try:
+							ei = int(input_splt[1])-1; li = int(input_splt[2])-1; entry = entries[-1][ei];
+							editUpdateLinkPartner( conn, entry, li)
+						except:
+							traceback.print_exc()
+				elif (cmd == 'o' or cmd == 'read' or cmd == 'view'):
+					if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1
+						entry = entries[-1][ei]
+						viewEntryHist.append(entry)
+						viewEntry(entry)
+					else:
+						for e in viewEntryHist:
+							printEntry(entry)
+				elif (cmd == 'x' or cmd == 'close'):
+					entry = None
+					if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1
+						entry = entries[-1][ei]
+					else:
+						if (len(viewEntryHist)):
+							entry = viewEntryHist.pop()
+					if (entry is not None):
+						closeViewEntry(entry)
+				elif (cmd == 'cleanup'):
+					centries = [x for x in entries[-1] if ('c' not in x['extra']) ]
+					print 'There are {} entries to clean.'.format(len(centries))
+					for ie in range(len(centries)):
+						print '{}. '.format(ie),
+						entry = centries[ie]
+						editUpdateEntry(conn, entry, True, True)
+						entry['extra'].append('c')
+						dbUpdateEntry(conn, entry)
+				elif (cmd == 'scan'):
+					spath = None if (g_lastscan is None) else g_lastscan[0]
+					time =  None if (g_lastscan is None) else g_lastscan[1]
+					if (len(input_splt) >= 2):
+						spath = input_splt[1]
+					if (len(input_splt) >= 3):
+						time = input_splt[2]
+					if (spath is not None):
+						scanImport(conn, spath, '1h' if time is None else time)
+					filters, entries, time_based = reset(conn, cur_time_based)
+				elif (cmd == '+' or cmd == '-'):
+					if (len(input_splt) == 3):
+						ei = int(input_splt[1])-1
+						entry = entries[-1][ei]
+						ntags = input_splt[2].split(',')
+						etags = copy.deepcopy(entry['tags'])
+						for ntag in ntags:
+							if (cmd == '+'):
+								entry['tags'][ntag] = ''
+							else:
+								if ntag in entry['tags']:
+									del entry['tags'][ntag]
+						modded = (etags != entry['tags'])
+						if (modded):
+							dbUpdateEntry(conn, entry)
+							print_col('green'); printEntry(entry, 1); print_col('default');
+				elif (cmd == '#'):
+					if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1
+						entry = entries[-1][ei]
+						(elines, count) = textLengthEntry(entry)
+						printErrLines(ei, entry, elines)
+						print_col('green'); print ' {} words'.format(count); print_col('default');
+				elif (cmd == 'figs'):
+					if (len(input_splt) == 2):
+						ei = int(input_splt[1])-1
+						entry = entries[-1][ei]
+						(elines, count) = textCountEntry(entry, 'figure')
+						printErrLines(ei, entry, elines)
+						print_col('green'); print ' ~{} figures'.format(count/2); print_col('default');
+				elif (cmd == 'f' or cmd == 'find'):
+					phrase = ' '.join(input_splt[1:])
+					nthreads = max(1, multiprocessing.cpu_count()-1)
+					textSearchEntries(entries[-1], phrase, nthreads)
+				elif (cmd == 'ft'):
+					phrase = ' '.join(input_splt[1:])
+					matches = matchAllTags(phrase, entries[-1])
+					for it in range(len(matches)):
+							print '{}. {}, '.format(it+1, matches[it]),
+							if (it % 10 == 0 and it != 0):
+								print ''
+					print '\n{} tags\n'.format(len(matches))
+				elif (cmd == 'remove' or cmd == 'delete'):
+					ei = int(input_splt[1])-1
+					entry = entries[-1][ei]
+					print_col('red'); printEntry(entry, 1); print_col('default');
+					dbRemoveEntry(conn, entry)
+					tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
+					os.remove(tpath)
+		except:
+			#dbEndSession(conn)
+			print_col('red'); print ''; traceback.print_exc(); print_col('default');
+			e = sys.exc_info()[0]
+			#raise e
+	dbEndSession(conn)
 	return 0
 
 def tagAdd(conn, fpath, ltags, jtags = None):
@@ -1482,7 +1492,7 @@ def tagImport(conn, ipath, updating):
 
 def printAndChoose(list, postindex = False, forceChoose = False):
 	if (len(list) == 0): return []
-	if (len(list) == 1 and forceChoose == False): return list
+	if (len(list) == 1 and forceChoose == False): return [0]
 	for i in range(len(list)):
 		print_coli(gAltCols[i % len(gAltCols)])
 		if postindex:
@@ -1517,6 +1527,7 @@ def scanImport(conn, spath, time):
 		args.extend(['-name', '*{}'.format(e), '-o'])
 	args.pop()
 	args.extend([')', '-ctime', '-{}'.format(time)])
+	#print args
 	(out, err) = runPiped(args)
 	if (len(err)):
 		print_col('red'); print err; print_col('default');
