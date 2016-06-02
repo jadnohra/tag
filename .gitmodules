@@ -1,3 +1,0 @@
-[submodule "dep/scholar"]
-	path = dep/scholar
-	url = https://github.com/ckreibich/scholar.py
