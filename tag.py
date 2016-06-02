@@ -1411,10 +1411,11 @@ def enter_assisted_input():
 					else:
 						bib_list = [ ' '.join(input_splt[1:]) ]
 					print ' Extracting...'
-					bib_out = []
-					for bibi in range(len(bib_list)):
-						bib_out.append(extractBib(bib_list[bibi], bibi+1))
-					print ',\n'.join(bib_out)
+					if len(bib_list):
+						bib_out = []
+						for bibi in range(len(bib_list)):
+							bib_out.append(extractBib(bib_list[bibi], bibi+1).strip())
+					print '\n', ',\n\n'.join(bib_out), '\n'
 		except:
 			#dbEndSession(conn)
 			print_col('red'); print ''; traceback.print_exc(); print_col('default');
