@@ -18,6 +18,7 @@ import traceback
 import threading
 import multiprocessing
 import math
+import requests
 
 #https://docs.python.org/2/library/plistlib.html
 #http://apple.stackexchange.com/questions/194503/where-is-preview-storing-the-data-to-reopen-a-pdf-at-the-last-page-os-x-lion
@@ -988,17 +989,31 @@ def bibToDict(str):
 						break
 	return dict
 
-def extractBib(name, index = 1):
+def extractStackex(name):
+	re = requests.get('https://api.stackexchange.com/2.2/search?order=desc&sort=activity&intitle={}&site=math'.format(name))
+	re_dict = json.loads(re.text)
+	items = re_dict.get('items', [])
+	if len(items) == 0:
+		return ''
+	#print 'stackexch', items[0].get('title', '')
+	out = bibFromDict({'_@':'misc', '_ref':'n_a', 'title':items[0].get('title', ''), 'link':items[0].get('link', '')})
+	#print out
+	return out
+
+def extractBib(name):
 	this_dir = os.path.dirname(os.path.abspath(__file__))
 	args = ['python', os.path.join(this_dir, 'scholar.py'), '-c', '1', '--citation', 'bt', '-t', '--phrase', '"{}"'.format(name)]
 	(out, err) = runPipedShell(unistr(' '.join(args)))
+	#print unistr(' '.join(args)), out, err
 	if len(err):
 		print_col('red'); print err; print_col('default');
 	#print bibToDict(out)
+	if (len(out) == 0):
+		return extractStackex(name)
 	return out
 
 def bibFromDict(dict):
-	comps = [ '@{}{{'.format(dict.get('_@', 'n/a')), ' {}'.format(dict.get('_ref', 'n/a')) ]
+	comps = [ '@{}{{'.format(dict.get('_@', 'n_a')), ' {}'.format(dict.get('_ref', 'n_a')) ]
 	for k in [x for x in dict.keys() if not x.startswith('_')]:
 		comps.append(' , {} = {{ {} }}'.format(k, dict[k]))
 	comps.append('}')
@@ -1211,7 +1226,7 @@ def enter_assisted_input():
 
 	def bibExtractThread(title, index, bib_out, bibi):
 		try:
-			bib_str = extractBib(title, index).strip()
+			bib_str = extractBib(title).strip()
 			if len(bib_str):
 				bib_dict = bibToDict(bib_str)
 				bib_dict['_ref'] = 'c{}'.format(index)
@@ -1460,8 +1475,8 @@ def enter_assisted_input():
 					dbRemoveEntry(conn, entry)
 					tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
 					os.remove(tpath)
-				elif (cmd == 'bib' or cmd == 'bibr' or cmd == 'bibf'):
-					bib_force = (cmd == 'bibf'); bib_strict = (cmd == 'bib');
+				elif (cmd.startswith('bib') or cmd.startswith('cite')):
+					bib_force = (cmd.startswith('bibf')); bib_strict = (cmd in ['bib', 'cite']);
 					bib_list = []
 					if ((len(input_splt) == 2) and (input_splt[1] == '*')) or (len(input_splt) == 1):
 						bib_list = [x['name'] for x in entries[-1]]
@@ -1471,22 +1486,33 @@ def enter_assisted_input():
 					else:
 						bib_list = [ ' '.join(input_splt[1:]) ]
 					print ' Extracting...'
-					if len(bib_list):
-						tinfos = []; bib_out = [None]*len(bib_list);
+					bib_out = [None]*len(bib_list)
+					bib_threading = cmd.endswith('t') # Don't make scholar angry and think we are a bot
+					if bib_threading:
+						if len(bib_list):
+							tinfos = [];
+							for bibi in range(len(bib_list)):
+								tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
+								t = threading.Thread(target=bibExtractThread, args=(bib_list[bibi], bibi+1, bib_out, bibi))
+								tinfo['thread'] = t; tinfos.append(tinfo); t.setDaemon(True); t.start();
+						bib_check = [False]*len(bib_out)
+						print ' ',
+						while len([x for x in bib_check if x]) < len(bib_check):
+								for i in range(len(bib_check)):
+									if bib_check[i] == False and bib_out[i] != None:
+										bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+									time.sleep(0.5)
+						print '\n'
+						for tinfo in tinfos:
+							tinfo['thread'].join()
+					else:
+						print ' ',
 						for bibi in range(len(bib_list)):
-							tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
-							t = threading.Thread(target=bibExtractThread, args=(bib_list[bibi], bibi+1, bib_out, bibi))
-							tinfo['thread'] = t; tinfos.append(tinfo); t.setDaemon(True); t.start();
-					bib_check = [False]*len(bib_out)
-					print ' ',
-					while len([x for x in bib_check if x]) < len(bib_check):
-							for i in range(len(bib_check)):
-								if bib_check[i] == False and bib_out[i] != None:
-									bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
-								time.sleep(0.5)
-					print '\n'
-					for tinfo in tinfos:
-						tinfo['thread'].join()
+							bibExtractThread(bib_list[bibi], bibi+1, bib_out, bibi)
+							i = bibi
+							print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+							time.sleep(0.5)
+						print '\n'
 					for bibi in range(len(bib_out)):
 						bib_dict = bib_out[bibi][1]
 						in_words = bib_list[bibi].split()
@@ -1497,7 +1523,7 @@ def enter_assisted_input():
 							if len(out_words) == 0 and bib_force == False:
 								continue
 							if len(out_words) == 0:
-								bib_dict['_@'] = 'misc'; bib_dict['_ref'] = bib_list[bibi];
+								bib_dict['_@'] = 'misc'; bib_dict['_ref'] = 'c{}'.format(bibi+1); bib_dict['title'] = bib_list[bibi];
 							bib_dict['todo'] = 'true';
 							bib_out[bibi][0] = bibFromDict(bib_dict);
 						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print bib_out[bibi][0]; print_col('default'); print ',\n'
