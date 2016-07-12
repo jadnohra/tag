@@ -1019,6 +1019,43 @@ def bibFromDict(dict):
 	comps.append('}')
 	return '\n'.join(comps)
 
+def getOpenPreviewFilePaths():
+	def scriptString():
+		return	"""set all_paths to ""
+							tell application "Preview"
+								set all_docs to every document
+								repeat with a_doc in all_docs
+									set all_paths to all_paths & (path of a_doc) & "\n"
+								end repeat
+							end tell
+							return all_paths"""
+	(out, err) = runPiped(['osascript', '-e', scriptString()])
+	for line in [x for x in out.split("\n") if len(x)]:
+		print line
+
+def getOpenDjvuFileNames():
+	def scriptString():
+		return	"""set all_names to ""
+								tell application "System Events"
+									repeat with theProcess in processes
+										if not background only of theProcess then
+											tell theProcess
+												set processName to name
+												set theWindows to windows
+											end tell
+											if "djvu" is in processName then
+												repeat with theWindow in theWindows
+													set all_names to all_names & (name of theWindow) & "\n"
+												end repeat
+											end if
+										end if
+									end repeat
+								end tell
+								return all_names"""
+	(out, err) = runPiped(['osascript', '-e', scriptString()])
+	for line in [x for x in out.split("\n") if len(x)]:
+		print line
+
 def enter_assisted_input():
 
 	def checkPlatMac():
@@ -1529,6 +1566,9 @@ def enter_assisted_input():
 						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print bib_out[bibi][0]; print_col('default'); print ',\n'
 						#out = "@misc{{c{}, title = {{ {} }} }, todo = {{true}}}".format(index, name)
 					#print '\n', ',\n\n'.join([x[0] for x in bib_out]), '\n'
+				elif cmd == 'ssess':
+					getOpenPreviewFilePaths()
+					getOpenDjvuFileNames()
 		except:
 			#dbEndSession(conn)
 			print_col('red'); print ''; traceback.print_exc(); print_col('default');
