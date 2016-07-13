@@ -474,6 +474,7 @@ def dbUpgrade(conn):
 	#conn.execute('CREATE TABLE file_notes(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
 	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
+	#conn.execute('CREATE TABLE sess_history(sess_id INTEGER PRIMARY KEY AUTOINCREMENT, sess_name TEXT, descr TEXT, json TEXT, ts TIMESTAMP)')
 	conn.commit()
 	return 0
 
@@ -492,6 +493,47 @@ def dbAddNote(conn, link_id, loc, descr):
 def dbUpdateNote(conn, note):
 	conn.execute('UPDATE file_notes SET link_id=?, loc=?, descr=?, ts=? WHERE note_id=?', (note[1], note[2], note[3], note[4], note[0],) )
 	conn.commit()
+
+def dbAddSess(conn, name, descr, json):
+	conn.execute("INSERT INTO sess_history VALUES (?,?,?,?,?)", (None, name, descr, json, datetime.datetime.now() ) )
+	conn.commit()
+
+def dbRecToSessEntryIndexed(rec):
+	entry = {'sessid':rec[0], 'name':rec[1], 'descr':rec[2], 'json':rec[3], 'ts':datetime.datetime.strptime(rec[4], "%Y-%m-%d %H:%M:%S.%f")}
+	return entry
+
+def dbGetSessions(conn):
+	ret = []
+	recs = conn.execute('SELECT * FROM sess_history')
+	rec = recs.fetchone()
+	while (rec != None):
+		entry = dbRecToSessEntryIndexed(rec)
+		ret.append(entry)
+		rec = recs.fetchone()
+	recs.close()
+	return ret
+
+def dbGetSessionNames(conn):
+	ret = []
+	recs = conn.execute('SELECT distinct sess_name FROM sess_history')
+	rec = recs.fetchone()
+	while (rec != None):
+		entry = rec[0]
+		ret.append(entry)
+		rec = recs.fetchone()
+	recs.close()
+	return ret
+
+def dbGetLastSessionWithName(conn, name):
+	ret = []
+	recs = conn.execute('SELECT * FROM sess_history WHERE sess_name=? ORDER BY sess_id DESC LIMIT 1', (name,))
+	rec = recs.fetchone()
+	while (rec != None):
+		entry = dbRecToSessEntryIndexed(rec)
+		ret.append(entry)
+		rec = recs.fetchone()
+	recs.close()
+	return ret[0] if len(ret) else None
 
 def dbAddEntry(conn, entry):
 	entry['tags'] = listToTags(entry['tags'])
@@ -549,6 +591,16 @@ def dbGetEntries(conn):
 def dbGetEntryByHash(conn, hashid):
 	ret = []
 	recs = conn.execute('SELECT * FROM file_entries WHERE hashid=?', (hashid, ) )
+	rec = recs.fetchone()
+	entry = None
+	if (rec != None):
+		entry = dbRecToEntryIndexed(rec)
+	recs.close()
+	return entry
+
+def dbGetEntryByFname(conn, fname):
+	ret = []
+	recs = conn.execute('SELECT * FROM file_entries WHERE fname=?', (fname, ) )
 	rec = recs.fetchone()
 	entry = None
 	if (rec != None):
@@ -1030,8 +1082,7 @@ def getOpenPreviewFilePaths():
 							end tell
 							return all_paths"""
 	(out, err) = runPiped(['osascript', '-e', scriptString()])
-	for line in [x for x in out.split("\n") if len(x)]:
-		print line
+	return out.split('\n')
 
 def getOpenDjvuFileNames():
 	def scriptString():
@@ -1053,8 +1104,44 @@ def getOpenDjvuFileNames():
 								end tell
 								return all_names"""
 	(out, err) = runPiped(['osascript', '-e', scriptString()])
-	for line in [x for x in out.split("\n") if len(x)]:
-		print line
+	return out.split('\n')
+
+def sessGetFiles(sess):
+	json_obj = json.loads(sess['json'])
+	fnames = json_obj["fnames"]
+	return fnames
+
+def sessPrintFiles(sess):
+	fnames = sessGetFiles(sess)
+	ni = 0
+	for fname in fnames:
+		print_col('yellow'); print ' {}. [{}]'.format(ni, fname); print_col('default');
+		ni = ni+1
+
+def sessGetOpenFileEntries(conn, do_print):
+	prev_names = [os.path.split(x)[1] for x in getOpenPreviewFilePaths()]
+	djvu_names = getOpenDjvuFileNames()
+	all_names = prev_names + djvu_names
+	all_entries = []
+	ni = 0
+	for name in all_names:
+		entry = dbGetEntryByFname(conn, name)
+		if entry is not None:
+			if do_print:
+				print_col('yellow'); print ' {}. [{}]'.format(ni, name); print_col('default');
+			all_entries.append(entry)
+			ni = ni+1
+		#else:
+		#	print_col('red'); print 'No entry found for' + name' print_col('default')
+	return all_entries
+
+def sessWriteSession(conn, name, descr, fileEntries):
+	if len(fileEntries) == 0:
+		return
+	json_str = '{{ "fnames": [ {} ] }}'.format(','.join([' "{}" '.format(x['fname']) for x in fileEntries]))
+	#print json_str
+	json_obj = json.loads(json_str)
+	dbAddSess(conn, name, descr, json_str)
 
 def enter_assisted_input():
 
@@ -1567,8 +1654,36 @@ def enter_assisted_input():
 						#out = "@misc{{c{}, title = {{ {} }} }, todo = {{true}}}".format(index, name)
 					#print '\n', ',\n\n'.join([x[0] for x in bib_out]), '\n'
 				elif cmd == 'ssess':
-					getOpenPreviewFilePaths()
-					getOpenDjvuFileNames()
+					if len(input_splt) == 1:
+						print_col('red'); print 'Please provide a session name'; print_col('default')
+					else:
+						sess_entries = sessGetOpenFileEntries(conn, True)
+						descr = ' '.join(input_splt[2:]) if len(input_splt) >= 3 else ''
+						sessWriteSession(conn, input_splt[1], descr, sess_entries)
+				elif cmd == 'lsess':
+					if len(input_splt) == 2:
+						session = dbGetLastSessionWithName(conn, input_splt[1])
+						if session:
+							print_col('blue'); print ' {}'.format(session['ts'].strftime('%d-%b-%Y')); print_col('default');
+							sessPrintFiles(session)
+					else:
+						ni = 0
+						for name in dbGetSessionNames(conn):
+							print_col('green'); print ' {}. {}'.format(ni, name); print_col('default'); ni = ni+1;
+				elif cmd == 'osess':
+					if len(input_splt) == 2:
+						session = dbGetLastSessionWithName(conn, input_splt[1])
+						if session:
+							fnames = sessGetFiles(session)
+							open_entries = sessGetOpenFileEntries(conn, False)
+							open_files = [x['fname'] for x in open_entries]
+							for fname in fnames:
+								fentry = dbGetEntryByFname(conn, fname)
+								if fentry:
+									if fentry['fname'] not in open_files:
+										viewEntry(fentry); #time.sleep(0.5);
+								else:
+									print_col('red'); print ' Missing entry for [{}]'; print_col('default');
 		except:
 			#dbEndSession(conn)
 			print_col('red'); print ''; traceback.print_exc(); print_col('default');
