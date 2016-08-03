@@ -522,7 +522,13 @@ def dbGetSessionNames(conn):
 		ret.append(entry)
 		rec = recs.fetchone()
 	recs.close()
-	return ret
+	counts = []
+	last = []
+	for entry in ret:
+		rec = conn.execute('SELECT count(*) FROM sess_history WHERE sess_name=?', (entry,))
+		counts.append(rec.fetchone()[0])
+		last.append(dbGetLastSessionWithName(conn, entry))
+	return zip(ret, counts, last)
 
 def dbGetLastSessionWithName(conn, name):
 	ret = []
@@ -1085,6 +1091,9 @@ def getOpenPreviewFilePaths():
 	return out.split('\n')
 
 def getOpenDjvuFileNames():
+	def cleanName(name):
+		if name.endswith(')') and '(' in name:
+			return name[:name.rfind('(')]
 	def scriptString():
 		return	"""set all_names to ""
 								tell application "System Events"
@@ -1104,7 +1113,9 @@ def getOpenDjvuFileNames():
 								end tell
 								return all_names"""
 	(out, err) = runPiped(['osascript', '-e', scriptString()])
-	return out.split('\n')
+	names = out.split('\n')
+	names = [cleanName(x) for x in names]
+	return names
 
 def sessGetFiles(sess):
 	json_obj = json.loads(sess['json'])
@@ -1653,6 +1664,8 @@ def enter_assisted_input():
 						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print bib_out[bibi][0]; print_col('default'); print ',\n'
 						#out = "@misc{{c{}, title = {{ {} }} }, todo = {{true}}}".format(index, name)
 					#print '\n', ',\n\n'.join([x[0] for x in bib_out]), '\n'
+				elif cmd == 'csess':
+						sessGetOpenFileEntries(conn, True)
 				elif cmd == 'ssess':
 					if len(input_splt) == 1:
 						print_col('red'); print 'Please provide a session name'; print_col('default')
@@ -1668,8 +1681,8 @@ def enter_assisted_input():
 							sessPrintFiles(session)
 					else:
 						ni = 0
-						for name in dbGetSessionNames(conn):
-							print_col('green'); print ' {}. {}'.format(ni, name); print_col('default'); ni = ni+1;
+						for name, count, last in dbGetSessionNames(conn):
+							print_col('green'); print ' {}. {} x {} ({})'.format(ni, name, count, last['ts'].strftime('%d-%b-%Y')); print_col('default'); ni = ni+1;
 				elif cmd == 'osess':
 					if len(input_splt) == 2:
 						session = dbGetLastSessionWithName(conn, input_splt[1])
