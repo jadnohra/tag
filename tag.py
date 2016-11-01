@@ -18,6 +18,7 @@ import traceback
 import threading
 import multiprocessing
 import math
+import requests
 
 #https://docs.python.org/2/library/plistlib.html
 #http://apple.stackexchange.com/questions/194503/where-is-preview-storing-the-data-to-reopen-a-pdf-at-the-last-page-os-x-lion
@@ -416,8 +417,8 @@ def normalizeName(name):
 	name = camelCaseToSpace(name)
 	comps = [x.strip() for x in name.split()]
 	name = ' '.join(comps)
-	if (name.isupper()):
-		name = titlecase(name)
+	if (os.path.splitext(name)[0].isupper()):
+		name = titlecase(name.lower())
 	return name
 
 def cleanFilename(name):
@@ -473,6 +474,7 @@ def dbUpgrade(conn):
 	#conn.execute('CREATE TABLE file_notes(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
 	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
+	#conn.execute('CREATE TABLE sess_history(sess_id INTEGER PRIMARY KEY AUTOINCREMENT, sess_name TEXT, descr TEXT, json TEXT, ts TIMESTAMP)')
 	conn.commit()
 	return 0
 
@@ -491,6 +493,53 @@ def dbAddNote(conn, link_id, loc, descr):
 def dbUpdateNote(conn, note):
 	conn.execute('UPDATE file_notes SET link_id=?, loc=?, descr=?, ts=? WHERE note_id=?', (note[1], note[2], note[3], note[4], note[0],) )
 	conn.commit()
+
+def dbAddSess(conn, name, descr, json):
+	conn.execute("INSERT INTO sess_history VALUES (?,?,?,?,?)", (None, name, descr, json, datetime.datetime.now() ) )
+	conn.commit()
+
+def dbRecToSessEntryIndexed(rec):
+	entry = {'sessid':rec[0], 'name':rec[1], 'descr':rec[2], 'json':rec[3], 'ts':datetime.datetime.strptime(rec[4], "%Y-%m-%d %H:%M:%S.%f")}
+	return entry
+
+def dbGetSessions(conn):
+	ret = []
+	recs = conn.execute('SELECT * FROM sess_history')
+	rec = recs.fetchone()
+	while (rec != None):
+		entry = dbRecToSessEntryIndexed(rec)
+		ret.append(entry)
+		rec = recs.fetchone()
+	recs.close()
+	return ret
+
+def dbGetSessionNames(conn):
+	ret = []
+	recs = conn.execute('SELECT distinct sess_name FROM sess_history')
+	rec = recs.fetchone()
+	while (rec != None):
+		entry = rec[0]
+		ret.append(entry)
+		rec = recs.fetchone()
+	recs.close()
+	counts = []
+	last = []
+	for entry in ret:
+		rec = conn.execute('SELECT count(*) FROM sess_history WHERE sess_name=?', (entry,))
+		counts.append(rec.fetchone()[0])
+		last.append(dbGetLastSessionWithName(conn, entry))
+	return zip(ret, counts, last)
+
+def dbGetLastSessionWithName(conn, name):
+	ret = []
+	recs = conn.execute('SELECT * FROM sess_history WHERE sess_name=? ORDER BY sess_id DESC LIMIT 1', (name,))
+	rec = recs.fetchone()
+	while (rec != None):
+		entry = dbRecToSessEntryIndexed(rec)
+		ret.append(entry)
+		rec = recs.fetchone()
+	recs.close()
+	return ret[0] if len(ret) else None
 
 def dbAddEntry(conn, entry):
 	entry['tags'] = listToTags(entry['tags'])
@@ -548,6 +597,16 @@ def dbGetEntries(conn):
 def dbGetEntryByHash(conn, hashid):
 	ret = []
 	recs = conn.execute('SELECT * FROM file_entries WHERE hashid=?', (hashid, ) )
+	rec = recs.fetchone()
+	entry = None
+	if (rec != None):
+		entry = dbRecToEntryIndexed(rec)
+	recs.close()
+	return entry
+
+def dbGetEntryByFname(conn, fname):
+	ret = []
+	recs = conn.execute('SELECT * FROM file_entries WHERE fname=?', (fname, ) )
 	rec = recs.fetchone()
 	entry = None
 	if (rec != None):
@@ -988,21 +1047,112 @@ def bibToDict(str):
 						break
 	return dict
 
-def extractBib(name, index = 1):
+def extractStackex(name):
+	re = requests.get('https://api.stackexchange.com/2.2/search?order=desc&sort=activity&intitle={}&site=math'.format(name))
+	re_dict = json.loads(re.text)
+	items = re_dict.get('items', [])
+	if len(items) == 0:
+		return ''
+	#print 'stackexch', items[0].get('title', '')
+	out = bibFromDict({'_@':'misc', '_ref':'n_a', 'title':items[0].get('title', ''), 'link':items[0].get('link', '')})
+	#print out
+	return out
+
+def extractBib(name):
 	this_dir = os.path.dirname(os.path.abspath(__file__))
 	args = ['python', os.path.join(this_dir, 'scholar.py'), '-c', '1', '--citation', 'bt', '-t', '--phrase', '"{}"'.format(name)]
 	(out, err) = runPipedShell(unistr(' '.join(args)))
+	#print unistr(' '.join(args)), out, err
 	if len(err):
 		print_col('red'); print err; print_col('default');
 	#print bibToDict(out)
+	if (len(out) == 0):
+		return extractStackex(name)
 	return out
 
 def bibFromDict(dict):
-	comps = [ '@{}{{'.format(dict.get('_@', 'n/a')), ' {}'.format(dict.get('_ref', 'n/a')) ]
+	comps = [ '@{}{{'.format(dict.get('_@', 'n_a')), ' {}'.format(dict.get('_ref', 'n_a')) ]
 	for k in [x for x in dict.keys() if not x.startswith('_')]:
 		comps.append(' , {} = {{ {} }}'.format(k, dict[k]))
 	comps.append('}')
 	return '\n'.join(comps)
+
+def getOpenPreviewFilePaths():
+	def scriptString():
+		return	"""set all_paths to ""
+							tell application "Preview"
+								set all_docs to every document
+								repeat with a_doc in all_docs
+									set all_paths to all_paths & (path of a_doc) & "\n"
+								end repeat
+							end tell
+							return all_paths"""
+	(out, err) = runPiped(['osascript', '-e', scriptString()])
+	return out.split('\n')
+
+def getOpenDjvuFileNames():
+	def cleanName(name):
+		if name.endswith(')') and '(' in name:
+			return name[:name.rfind('(')]
+	def scriptString():
+		return	"""set all_names to ""
+								tell application "System Events"
+									repeat with theProcess in processes
+										if not background only of theProcess then
+											tell theProcess
+												set processName to name
+												set theWindows to windows
+											end tell
+											if "djvu" is in processName then
+												repeat with theWindow in theWindows
+													set all_names to all_names & (name of theWindow) & "\n"
+												end repeat
+											end if
+										end if
+									end repeat
+								end tell
+								return all_names"""
+	(out, err) = runPiped(['osascript', '-e', scriptString()])
+	names = out.split('\n')
+	names = [cleanName(x) for x in names]
+	return names
+
+def sessGetFiles(sess):
+	json_obj = json.loads(sess['json'])
+	fnames = json_obj["fnames"]
+	return fnames
+
+def sessPrintFiles(sess):
+	fnames = sessGetFiles(sess)
+	ni = 0
+	for fname in fnames:
+		print_col('yellow'); print ' {}. [{}]'.format(ni, fname); print_col('default');
+		ni = ni+1
+
+def sessGetOpenFileEntries(conn, do_print):
+	prev_names = [os.path.split(x)[1] for x in getOpenPreviewFilePaths()]
+	djvu_names = getOpenDjvuFileNames()
+	all_names = prev_names + djvu_names
+	all_entries = []
+	ni = 0
+	for name in all_names:
+		entry = dbGetEntryByFname(conn, name)
+		if entry is not None:
+			if do_print:
+				print_col('yellow'); print ' {}. [{}]'.format(ni, name); print_col('default');
+			all_entries.append(entry)
+			ni = ni+1
+		#else:
+		#	print_col('red'); print 'No entry found for' + name' print_col('default')
+	return all_entries
+
+def sessWriteSession(conn, name, descr, fileEntries):
+	if len(fileEntries) == 0:
+		return
+	json_str = '{{ "fnames": [ {} ] }}'.format(','.join([' "{}" '.format(x['fname']) for x in fileEntries]))
+	#print json_str
+	json_obj = json.loads(json_str)
+	dbAddSess(conn, name, descr, json_str)
 
 def enter_assisted_input():
 
@@ -1211,7 +1361,7 @@ def enter_assisted_input():
 
 	def bibExtractThread(title, index, bib_out, bibi):
 		try:
-			bib_str = extractBib(title, index).strip()
+			bib_str = extractBib(title).strip()
 			if len(bib_str):
 				bib_dict = bibToDict(bib_str)
 				bib_dict['_ref'] = 'c{}'.format(index)
@@ -1460,8 +1610,8 @@ def enter_assisted_input():
 					dbRemoveEntry(conn, entry)
 					tpath = os.path.join(unistr(g_repo), unistr(entry['fname']))
 					os.remove(tpath)
-				elif (cmd == 'bib' or cmd == 'bibr' or cmd == 'bibf'):
-					bib_force = (cmd == 'bibf'); bib_strict = (cmd == 'bib');
+				elif (cmd.startswith('bib') or cmd.startswith('cite')):
+					bib_force = (cmd.startswith('bibf')); bib_strict = (cmd in ['bib', 'cite']);
 					bib_list = []
 					if ((len(input_splt) == 2) and (input_splt[1] == '*')) or (len(input_splt) == 1):
 						bib_list = [x['name'] for x in entries[-1]]
@@ -1471,22 +1621,33 @@ def enter_assisted_input():
 					else:
 						bib_list = [ ' '.join(input_splt[1:]) ]
 					print ' Extracting...'
-					if len(bib_list):
-						tinfos = []; bib_out = [None]*len(bib_list);
+					bib_out = [None]*len(bib_list)
+					bib_threading = cmd.endswith('t') # Don't make scholar angry and think we are a bot
+					if bib_threading:
+						if len(bib_list):
+							tinfos = [];
+							for bibi in range(len(bib_list)):
+								tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
+								t = threading.Thread(target=bibExtractThread, args=(bib_list[bibi], bibi+1, bib_out, bibi))
+								tinfo['thread'] = t; tinfos.append(tinfo); t.setDaemon(True); t.start();
+						bib_check = [False]*len(bib_out)
+						print ' ',
+						while len([x for x in bib_check if x]) < len(bib_check):
+								for i in range(len(bib_check)):
+									if bib_check[i] == False and bib_out[i] != None:
+										bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+									time.sleep(0.5)
+						print '\n'
+						for tinfo in tinfos:
+							tinfo['thread'].join()
+					else:
+						print ' ',
 						for bibi in range(len(bib_list)):
-							tinfo = {'entry_list':[], 'entry_errs':[], 'entry_lines':[], 'thread':None }
-							t = threading.Thread(target=bibExtractThread, args=(bib_list[bibi], bibi+1, bib_out, bibi))
-							tinfo['thread'] = t; tinfos.append(tinfo); t.setDaemon(True); t.start();
-					bib_check = [False]*len(bib_out)
-					print ' ',
-					while len([x for x in bib_check if x]) < len(bib_check):
-							for i in range(len(bib_check)):
-								if bib_check[i] == False and bib_out[i] != None:
-									bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
-								time.sleep(0.5)
-					print '\n'
-					for tinfo in tinfos:
-						tinfo['thread'].join()
+							bibExtractThread(bib_list[bibi], bibi+1, bib_out, bibi)
+							i = bibi
+							print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+							time.sleep(0.5)
+						print '\n'
 					for bibi in range(len(bib_out)):
 						bib_dict = bib_out[bibi][1]
 						in_words = bib_list[bibi].split()
@@ -1497,12 +1658,45 @@ def enter_assisted_input():
 							if len(out_words) == 0 and bib_force == False:
 								continue
 							if len(out_words) == 0:
-								bib_dict['_@'] = 'misc'; bib_dict['_ref'] = bib_list[bibi];
+								bib_dict['_@'] = 'misc'; bib_dict['_ref'] = 'c{}'.format(bibi+1); bib_dict['title'] = bib_list[bibi];
 							bib_dict['todo'] = 'true';
 							bib_out[bibi][0] = bibFromDict(bib_dict);
 						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print bib_out[bibi][0]; print_col('default'); print ',\n'
 						#out = "@misc{{c{}, title = {{ {} }} }, todo = {{true}}}".format(index, name)
 					#print '\n', ',\n\n'.join([x[0] for x in bib_out]), '\n'
+				elif cmd == 'csess':
+						sessGetOpenFileEntries(conn, True)
+				elif cmd == 'ssess':
+					if len(input_splt) == 1:
+						print_col('red'); print 'Please provide a session name'; print_col('default')
+					else:
+						sess_entries = sessGetOpenFileEntries(conn, True)
+						descr = ' '.join(input_splt[2:]) if len(input_splt) >= 3 else ''
+						sessWriteSession(conn, input_splt[1], descr, sess_entries)
+				elif cmd == 'lsess':
+					if len(input_splt) == 2:
+						session = dbGetLastSessionWithName(conn, input_splt[1])
+						if session:
+							print_col('blue'); print ' {}'.format(session['ts'].strftime('%d-%b-%Y')); print_col('default');
+							sessPrintFiles(session)
+					else:
+						ni = 0
+						for name, count, last in dbGetSessionNames(conn):
+							print_col('green'); print ' {}. {} x {} ({})'.format(ni, name, count, last['ts'].strftime('%d-%b-%Y')); print_col('default'); ni = ni+1;
+				elif cmd == 'osess':
+					if len(input_splt) == 2:
+						session = dbGetLastSessionWithName(conn, input_splt[1])
+						if session:
+							fnames = sessGetFiles(session)
+							open_entries = sessGetOpenFileEntries(conn, False)
+							open_files = [x['fname'] for x in open_entries]
+							for fname in fnames:
+								fentry = dbGetEntryByFname(conn, fname)
+								if fentry:
+									if fentry['fname'] not in open_files:
+										viewEntry(fentry); #time.sleep(0.5);
+								else:
+									print_col('red'); print ' Missing entry for [{}]'; print_col('default');
 		except:
 			#dbEndSession(conn)
 			print_col('red'); print ''; traceback.print_exc(); print_col('default');
