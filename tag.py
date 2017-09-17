@@ -1699,7 +1699,7 @@ def enter_assisted_input():
 									print_col('red'); print ' Missing entry for [{}]'; print_col('default');
 				elif cmd == 'export':
 					def exportFilterTags(tags):
-						return [x for x in tags if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False ]
+						return sorted([x for x in tags if len(x) > 0 and (any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False) ])
 					def exportFilterEntries(entries):
 						filt_entries = []
 						for ie in range(len(entries)):
@@ -1724,7 +1724,7 @@ def enter_assisted_input():
 							of.write(u'--- | --- | ---\n')
 							for ie in range(len(exp_entries)):
 								entry = exp_entries[ie]
-								filtered_tags = [x for x in entry['tags'] if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False ]
+								filtered_tags = exportFilterTags(entry['tags'])
 								of.write(u'{} | {} | {}\n'.format(ie+1, entry['name'], ', '.join(filtered_tags), entry['hashid'], ).encode('utf-8'))
 					else:
 						print_col('red'); print ' Missing output file'; print_col('default');
