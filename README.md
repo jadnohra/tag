@@ -1,5 +1,5 @@
 # tag
-Organize, tag and search my library. Every once in a while, I export my own library (with a small number of omissions) [here](https://github.com/jadnohra/tag_export),
+Organize, tag and search my library. Every once in a while, I export my own library (with a small number of omissions) [here](https://github.com/jadnohra/tag_export).
 
 <img src="tag.png" width="450">
 
