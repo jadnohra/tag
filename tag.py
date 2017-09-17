@@ -1709,7 +1709,7 @@ def enter_assisted_input():
 								entry = exp_entries[ie]
 								excl_entry = ('(join)' in entry['name'].lower()) or ('join' in entry['tags']) or ('stack' in entry['tags']) or ('wiki' in entry['tags']) or ('mst' in entry['tags']) or ('business' in entry['tags']) or ('web' in entry['tags']) or ('web' in entry['name'].split(' '))
 								if excl_entry == False:
-									filtered_tags = [x for x in entry['tags'] if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly' ]]) == False ]
+									filtered_tags = [x for x in entry['tags'] if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False ]
 									of.write(u'{} | {} | {}\n'.format(ie+1, entry['name'], ', '.join(filtered_tags), entry['hashid'], ).encode('utf-8'))
 					else:
 						print_col('red'); print ' Missing output file'; print_col('default');
