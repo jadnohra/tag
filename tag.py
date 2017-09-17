@@ -1698,19 +1698,34 @@ def enter_assisted_input():
 								else:
 									print_col('red'); print ' Missing entry for [{}]'; print_col('default');
 				elif cmd == 'export':
+					def exportFilterTags(tags):
+						return [x for x in tags if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False ]
+					def exportFilterEntries(entries):
+						filt_entries = []
+						for ie in range(len(entries)):
+							entry = entries[ie]
+							excl_entry = ('(join)' in entry['name'].lower()) or ('join' in entry['tags']) or ('stack' in entry['tags']) or ('wiki' in entry['tags']) or ('mst' in entry['tags']) or ('business' in entry['tags']) or ('web' in entry['tags']) or ('web' in entry['name'].split(' '))
+							if excl_entry == False:
+								filt_entries.append(entry)
+						return filt_entries
 					if len(input_splt) == 2:
 						out_file = os.path.expanduser(input_splt[1])
 						with open(out_file, 'w') as of:
 							of.write(u"# Jad Nohra's [Tag](https://github.com/jadnohra/tag) Library Export ({})\n".format(datetime.datetime.today().date().strftime('%d-%b-%Y')))
-							of.write(u'{} | {} | {}\n'.format('Index', 'Title', 'Tags'))
+							exp_entries = exportFilterEntries(entries[-1])
+							tags = {}
+							for e in exp_entries:
+								etags = exportFilterTags(flattags(e['tags']))
+								for etag in etags:
+									tags[etag] = ''
+							tkeys = sorted(tags.keys())
+							of.write(u'## Tags \n {}\n\n'.format(u', '.join(tkeys)))
+							of.write(u'## Entries \n {} | {} | {}\n'.format('Index', 'Title', 'Tags'))
 							of.write(u'--- | --- | ---\n')
-							exp_entries = entries[-1]
 							for ie in range(len(exp_entries)):
 								entry = exp_entries[ie]
-								excl_entry = ('(join)' in entry['name'].lower()) or ('join' in entry['tags']) or ('stack' in entry['tags']) or ('wiki' in entry['tags']) or ('mst' in entry['tags']) or ('business' in entry['tags']) or ('web' in entry['tags']) or ('web' in entry['name'].split(' '))
-								if excl_entry == False:
-									filtered_tags = [x for x in entry['tags'] if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False ]
-									of.write(u'{} | {} | {}\n'.format(ie+1, entry['name'], ', '.join(filtered_tags), entry['hashid'], ).encode('utf-8'))
+								filtered_tags = [x for x in entry['tags'] if any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False ]
+								of.write(u'{} | {} | {}\n'.format(ie+1, entry['name'], ', '.join(filtered_tags), entry['hashid'], ).encode('utf-8'))
 					else:
 						print_col('red'); print ' Missing output file'; print_col('default');
 		except:
