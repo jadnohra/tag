@@ -1,5 +1,7 @@
 # tag
-Organize, tag and search my library.
+Organize, tag and search my library. Every once in a while, I export my own library (with a small number of omissions) [here](https://github.com/jadnohra/tag_export),
+
+<img src="tag.png" width="450">
 
 # Basic Usage Examples
  * A database is used to store the information, and a repository folder is used to hold the library's files.
@@ -7,7 +9,7 @@ Organize, tag and search my library.
  * ./tag.py -repo /foo/bar -add /Downloads/paper.pdf -tags "math,geom,[euclid]"
   * /Downloads/paper.pdf is copied to /foo/bar/paper.pdf and tagged with the three supplied tags
  * ./tag.py -repo /foo/bar -find geom
-  * Prints a list of all files tagged 'geom' 
+  * Prints a list of all files tagged 'geom'
  * ./tag.py -repo /foo/bar -name linear
   * Prints a list of all files whose name contains 'linear' (case insensitive)
  * ./tag.py -repo /foo/bar
@@ -25,5 +27,5 @@ Organize, tag and search my library.
     * Turning them into Title Case if they are all caps.
     * Separating them by spaces if they are camel-cased.
     * Detects tags and strips them if they are enclosed in parentheses, per example the file "(geom,[euclid]) TheElements.pdf" will get the name 'The Elements', with the tags 'geom', '[euclid]' and '.pdf'
- 
+
 
