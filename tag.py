@@ -19,6 +19,7 @@ import threading
 import multiprocessing
 import math
 import requests
+import urllib
 
 #https://docs.python.org/2/library/plistlib.html
 #http://apple.stackexchange.com/questions/194503/where-is-preview-storing-the-data-to-reopen-a-pdf-at-the-last-page-os-x-lion
@@ -1759,6 +1760,17 @@ def enter_assisted_input():
 						return filt_entries
 					def exportTbl(strg):
 						return strg.replace('|', ':')
+					def exportFormatBib(strg):
+						if entry['bib'] == 'n/a':
+							return ' '
+						descr = exportTbl(' '.join(entry['bib'].split()))
+						content = descr
+						try:
+							url = 'https://scholar.google.de/scholar?{}'.format(urllib.urlencode({'q':descr}))
+							content = '[{}]({})'.format(descr, url)
+						except UnicodeEncodeError:
+							pass
+						return u'<sub>{}</sub>'.format(content)
 					if len(input_splt) == 2:
 						out_file = os.path.expanduser(input_splt[1])
 						with open(out_file, 'w') as of:
@@ -1776,7 +1788,7 @@ def enter_assisted_input():
 							for ie in range(len(exp_entries)):
 								entry = exp_entries[ie]
 								filtered_tags = exportFilterTags(entry['tags'])
-								of.write(u'{} | {} | {} | {} | <sub>{}</sub>\n'.format(ie+1, exportTagStar(entry['tags']), exportTbl(entry['name']), ', '.join(filtered_tags), exportTbl(' '.join(entry['bib'].split())) if entry['bib'] != 'n/a' else ' ').encode('utf-8'))
+								of.write(u'{} | {} | {} | {} | {}\n'.format(ie+1, exportTagStar(entry['tags']), exportTbl(entry['name']), ', '.join(filtered_tags), exportFormatBib(entry['bib'])).encode('utf-8'))
 					else:
 						print_col('red'); print ' Missing output file'; print_col('default');
 		except:
