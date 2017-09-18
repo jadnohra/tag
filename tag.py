@@ -469,11 +469,14 @@ def dbEndSession(conn):
 	conn.close()
 
 def dbUpgrade(conn):
+	#conn.execute('CREATE TABLE file_bib(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute("alter table file_links add column 'link_type' 'TEXT'")
 	#conn.execute('DROP TABLE file_notes')
 	#conn.execute('CREATE TABLE file_notes(note_id INTEGER PRIMARY KEY AUTOINCREMENT, link_id TEXT, loc TEXT, descr TEXT, ts TIMESTAMP)')
 	#conn.execute('CREATE INDEX manual_index_file_links_1 on file_links (link_from, link_to)')
-	#conn.execute("alter table file_entries add column 'link_id' 'TEXT'")
+	#conn.execute("alter table file_entries add column 'bib' 'TEXT'")
+	#conn.execute("alter table file_entries add column 'bib_url' 'TEXT'")
+	#conn.execute("alter table file_entries add column 'url' 'TEXT'")
 	#conn.execute('CREATE TABLE sess_history(sess_id INTEGER PRIMARY KEY AUTOINCREMENT, sess_name TEXT, descr TEXT, json TEXT, ts TIMESTAMP)')
 	conn.commit()
 	return 0
@@ -570,6 +573,18 @@ def dbUpdateEntryLinkId(conn, entry):
 	conn.execute('UPDATE file_entries SET link_id=? WHERE hashid=?', (entry['link_id'], entry['hashid'], ) )
 	conn.commit()
 
+def dbUpdateEntryBib(conn, entry):
+	conn.execute('UPDATE file_entries SET bib=? WHERE hashid=?', (unistr(entry['bib']), entry['hashid'], ) )
+	conn.commit()
+
+def dbUpdateEntryBibUrl(conn, entry):
+	conn.execute('UPDATE file_entries SET bib=? WHERE hashid=?', (entry['bib_url'], entry['hashid'], ) )
+	conn.commit()
+
+def dbUpdateEntryUrl(conn, entry):
+	conn.execute('UPDATE file_entries SET bib=? WHERE hashid=?', (entry['url'], entry['hashid'], ) )
+	conn.commit()
+
 def dbUpdateEntry(conn, entry):
 	dbRemoveEntry(conn, entry)
 	dbAddEntry(conn, entry)
@@ -577,10 +592,14 @@ def dbUpdateEntry(conn, entry):
 def dbRecToEntryIndexed(rec):
 	rec_extra = rec[5] if rec[5] is not None else ''
 	rec_link_id = rec[6] if rec[6] is not None else ''
+	rec_bib = rec[7] if rec[7] is not None else ''
+	rec_bib_url = rec[8] if rec[8] is not None else ''
+	rec_url = rec[9] if rec[9] is not None else ''
 	entry = { 'hashid':rec[0], 'fname':unistr(rec[1]), 'name':unistr(rec[2]),
 				'tags':listToTags(json.loads(rec[3])), 'ts':datetime.datetime.strptime(rec[4], "%Y-%m-%d %H:%M:%S.%f"),
 				'extra':rec_extra.split(','),
-				'link_id':rec_link_id }
+				'link_id':rec_link_id,
+				'bib':rec_bib, 'bib_url':rec_bib_url, 'url':rec_url }
 	return entry
 
 def dbGetEntries(conn):
@@ -1060,14 +1079,21 @@ def extractStackex(name):
 
 def extractBib(name):
 	this_dir = os.path.dirname(os.path.abspath(__file__))
-	args = ['python', os.path.join(this_dir, 'scholar.py'), '-c', '1', '--citation', 'bt', '-t', '--phrase', '"{}"'.format(name)]
-	(out, err) = runPipedShell(unistr(' '.join(args)))
+	try:
+		args = ['python', os.path.join(this_dir, 'scholar.py'), '-c', '1', '--citation', 'bt', '-t', '--phrase', '"{}"'.format(name)]
+		(out, err) = runPipedShell(unistr(' '.join(args)))
+	except:
+		traceback.print_exc()
+		out = ''; err = '';
 	#print unistr(' '.join(args)), out, err
 	if len(err):
 		print_col('red'); print err; print_col('default');
 	#print bibToDict(out)
 	if (len(out) == 0):
-		return extractStackex(name)
+		try:
+			return extractStackex(name)
+		except:
+			traceback.print_exc()
 	return out
 
 def bibFromDict(dict):
@@ -1697,17 +1723,42 @@ def enter_assisted_input():
 										viewEntry(fentry); #time.sleep(0.5);
 								else:
 									print_col('red'); print ' Missing entry for [{}]'; print_col('default');
+				elif cmd == 'fill_bib':
+					def doBibNotes(entries):
+						for ie in range(len(entries)):
+							entry = entries[ie]
+							if len(entry['bib']) == 0:
+								bib_str = extractBib(entry['name']).strip()
+								bib_dict = bibToDict(bib_str)
+								in_words = entry['name'].split()
+								out_words = bib_dict.get('title', '').split()
+								if len(in_words) == len(out_words):
+									print_col('green'); print u' [{}] -> [{}]'.format(unistr(entry['name']), unistr(bib_str)); print_col('default');
+									entry['bib'] = bib_str; dbUpdateEntryBib(conn, entry);
+								else:
+									entry['bib'] = 'n/a'; dbUpdateEntryBib(conn, entry);
+									print_col('red'); print u' [{}]'.format(unistr(entry['name'])); print_col('default');
+	 							time.sleep(0.5)
+					doBibNotes(entries[-1])
 				elif cmd == 'export':
+					def exportTagStar(tags):
+						if any([y == x for y in ['gold', '**', '++'] for x in tags]):
+							return u'★★'
+						if any([y in x for y in ['*', '+', 'gold', 'silver'] for x in tags]):
+							return u'★'
+						return ''
 					def exportFilterTags(tags):
 						return sorted([x for x in tags if len(x) > 0 and (any([y in x for y in ['*', '+', 'gold', 'silver', 'diamond', 'english', 'answer', 'wiki', 'mst', '$', 'lvl', 'friendly', 'disambig' ]]) == False) ])
 					def exportFilterEntries(entries):
 						filt_entries = []
 						for ie in range(len(entries)):
 							entry = entries[ie]
-							excl_entry = ('(join)' in entry['name'].lower()) or ('join' in entry['tags']) or ('stack' in entry['tags']) or ('wiki' in entry['tags']) or ('mst' in entry['tags']) or ('business' in entry['tags']) or ('web' in entry['tags']) or ('web' in entry['name'].split(' '))
+							excl_entry = ('(join)' in entry['name'].lower()) or (', join' in entry['name'].lower()) or ('join' in entry['tags']) or ('stack' in entry['tags']) or ('wiki' in entry['tags']) or ('mst' in entry['tags']) or ('business' in entry['tags']) or ('web' in entry['tags']) or ('web' in entry['name'].split(' '))
 							if excl_entry == False:
 								filt_entries.append(entry)
 						return filt_entries
+					def exportTbl(strg):
+						return strg.replace('|', ':')
 					if len(input_splt) == 2:
 						out_file = os.path.expanduser(input_splt[1])
 						with open(out_file, 'w') as of:
@@ -1720,12 +1771,12 @@ def enter_assisted_input():
 									tags[etag] = ''
 							tkeys = sorted(tags.keys())
 							of.write(u'## Tags \n {}\n\n'.format(u', '.join(tkeys)))
-							of.write(u'## Entries \n {} | {} | {}\n'.format('Index', 'Title', 'Tags'))
-							of.write(u'--- | --- | ---\n')
+							of.write(u'## Entries \n {} | {} | {} | {} | {}\n'.format('Index', 'Starred', 'Title', 'Tags', 'Bib'))
+							of.write(u'--- | --- | --- | --- | ---\n')
 							for ie in range(len(exp_entries)):
 								entry = exp_entries[ie]
 								filtered_tags = exportFilterTags(entry['tags'])
-								of.write(u'{} | {} | {}\n'.format(ie+1, entry['name'], ', '.join(filtered_tags), entry['hashid'], ).encode('utf-8'))
+								of.write(u'{} | {} | {} | {} | <sub>{}</sub>\n'.format(ie+1, exportTagStar(entry['tags']), exportTbl(entry['name']), ', '.join(filtered_tags), exportTbl(' '.join(entry['bib'].split())) if entry['bib'] != 'n/a' else ' ').encode('utf-8'))
 					else:
 						print_col('red'); print ' Missing output file'; print_col('default');
 		except:
