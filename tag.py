@@ -72,7 +72,7 @@ def vt_hist_add(hist, item, max = 30):
 def vt_edit(prefix, initial, hist = None):
 	inpchars = [x for x in initial]
 	while True:
-		print '\x1B[2K', '\r{} {}'.format(prefix, ''.join(inpchars)),
+		print('\x1B[2K', '\r{} {}'.format(prefix, ''.join(inpchars)), end='')
 		pre_inp = getch()
 		#print '[{}]'.format(pre_inp[0] == '\x1B')
 		if (len(pre_inp) >= 3 and pre_inp[0:3] == ['\x1B', '[', 'A'] and hist):
@@ -104,7 +104,7 @@ def vt_edit(prefix, initial, hist = None):
 
 def vt_edit2(prefix, items, sep_back = 'bwhite', type_back = {}, sel_back = 'bblue', edit_back = 'bred'):
 	def cprint(str, lpos):
-		print str,;	return lpos + len(str);
+		print(str, end='');	return lpos + len(str);
 	def bcol(item, type_back):
 		return type_back.get( item.get('type', ''), 'bcyan')
 	try:
@@ -176,7 +176,7 @@ def vt_edit2(prefix, items, sep_back = 'bwhite', type_back = {}, sel_back = 'bbl
 		return False
 	finally:
 		print_col('default')
-		print ''
+		print('')
 	return True
 
 SMALL = 'a|an|and|as|at|but|by|en|for|if|in|of|on|or|the|to|v\.?|via|vs\.?'
@@ -264,14 +264,14 @@ largv = []
 def largv_has(keys):
 	for i in range(len(keys)):
 		 if (keys[i] in largv):
-			return True
+                         return True
 	return False
 
 def largv_has_key(keys):
 	for key in keys:
 		ki = largv.index(key) if key in largv else -1
 		if (ki >= 0 and ki+1 < len(largv)):
-			return True
+                        return True
 	return False
 
 def largv_get(keys, dflt):
@@ -324,10 +324,13 @@ g_dbpath = None
 g_dry = False
 g_lastscan = None
 
-def unistr(str):
-	if not isinstance(str, unicode):
+def unistr(text):
+        return text
+'''
+	if not isinstance(text, str):
 		return unicode(str, "utf-8")
 	return str
+'''
 
 def matchTags(pat, tags):
 	#if (isinstance(pat, str)):
@@ -439,7 +442,7 @@ def createEntry(fpath, tags):
 	fname = makeCleanFilename(fpath)
 	name,ext = os.path.splitext(fname)
 	hashid = genFileMD5Str(fpath, fname)
-	return { 'hashid':hashid, 'fname':fname, 'name':name, 'tags':tags, 'ts':datetime.datetime.now(), 'extra':'', 'link_id':'' }
+	return { 'hashid':hashid, 'fname':fname, 'name':name, 'tags':tags, 'ts':datetime.datetime.now(), 'extra':'', 'link_id':'', 'bib':'', 'bib_url':'', 'url':'' }
 
 def dbBootstrap(conn):
 	conn.execute('CREATE TABLE file_entries(hashid TEXT PRIMARY KEY, fname TEXT, name TEXT, tags TEXT, ts TIMESTAMP)')
@@ -457,7 +460,7 @@ def dbStartSession(dbPath):
 			cursor = conn.execute(tableListQuery)
 			tables = map(lambda t: t[0], cursor.fetchall())
 			cursor.close()
-			if (len(tables) == 0):
+			if (len(list(tables)) == 0):
 				dbBootstrap(conn)
 	else:
 		conn = sqlite3.connect(":memory:")
@@ -548,7 +551,7 @@ def dbGetLastSessionWithName(conn, name):
 def dbAddEntry(conn, entry):
 	entry['tags'] = listToTags(entry['tags'])
 	tag_str = json.dumps( entry['tags'] )
-	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra']), entry['link_id'] ) )
+	conn.execute("INSERT INTO file_entries VALUES (?,?,?,?,?,?,?,?,?,?)", (entry['hashid'], unistr(entry['fname']), unistr(entry['name']), tag_str, entry['ts'], ','.join(entry['extra']), entry['link_id'], unistr(entry['bib']), entry['bib_url'], entry['url'] ) )
 	conn.commit()
 
 def dbRemoveEntry(conn, entry):
@@ -714,44 +717,44 @@ def listToTags(ltags):
 def printList(lst, sep, col1, col2):
 	for i in range(len(lst)):
 		print_col(col2 if i%2 else col1)
-		print '{}{}'.format(lst[i], sep if i+1<len(lst) else ''),
+		print('{}{}'.format(lst[i], sep if i+1<len(lst) else ''), end='')
 	print_col('default')
-	print ''
+	print('')
 
 def printTagList(lst, sep, col1, col2, coldeep):
 	for i in range(len(lst)):
 		print_col(coldeep if (':' in lst[i]) else (col2 if i%2 else col1))
-		print '{}{}'.format(lst[i], sep if i+1<len(lst) else ''),
+		print('{}{}'.format(lst[i], sep if i+1<len(lst) else ''), end='')
 	print_col('default')
-	print ''
+	print('')
 
 def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = None, len_prefix = 0, show_link_descr = False, show_notes = False, show_note_descr = False):
 	def printList(lst, len_prefix, bcol = 'bblue', fcol = 'default', lbreak = False):
 		if len(lst) == 0:
 			return
-		print ''.join([' ']*(len_prefix+2)),
+		print(''.join([' ']*(len_prefix+2)), end='')
 		for iti in range(len(lst)):
-			print_col('bwhite'); print '{}'.format(iti+1),; print_col(fcol); print_col(bcol);
-			print u' {} {}'.format(lst[iti], '\n' if lbreak else ''),
-		print_col('bwhite'); print ' ',
-		print_col('bdefault'); print_col('default'); print '';
+			print_col('bwhite'); print('{}'.format(iti+1), end=''); print_col(fcol); print_col(bcol);
+			print(u' {} {}'.format(lst[iti], '\n' if lbreak else ''), end='')
+		print_col('bwhite'); print(' ', end='')
+		print_col('bdefault'); print_col('default'); print('');
 	if mode > 0:
 		if (show_ts):
-			print '<{}>'.format(entry['ts'].strftime('%d-%b-%Y')),
+			print('<{}>'.format(entry['ts'].strftime('%d-%b-%Y')), end='')
 		if mode == 1:
-			print unistr('[{}]{}').format(entry['name'], '/{}'.format(entry['link_id']) if len(entry['link_id']) else '' ),
+			print(unistr('[{}]{}').format(entry['name'], '/{}'.format(entry['link_id']) if len(entry['link_id']) else '' ), end='')
 			printTagList(flattags(entry['tags']), ',', 'yellow', 'yellow', 'magenta')
 			#print_col('yellow'); print ','.join(flattags(entry['tags'])); print_col('default');
 		else:
-			print unistr('[{}] ').format(entry['name']),
+			print(unistr('[{}] ').format(entry['name']), end='')
 			if len(entry['link_id']):
-				print_col('bblue');  print unistr('({})').format(entry['link_id']),; print_col('bdefault'); sys.stdout.write(' ');
+				print_col('bblue');  print(unistr('({})').format(entry['link_id']), end=''); print_col('bdefault'); sys.stdout.write(' ');
 			items = flattags(entry['tags'])
-		 	for iti in range(len(items)):
-				print_col('bwhite'); print ' ',; print_col('bmagenta' if (':' in items[iti]) else 'bgreen');
-				print u' {} '.format(items[iti]),
-			print_col('bwhite'); print ' ',
-			print_col('bdefault'); print '';
+			for iti in range(len(items)):
+				print_col('bwhite'); print(' ', end=''); print_col('bmagenta' if (':' in items[iti]) else 'bgreen');
+				print(u' {} '.format(items[iti]), end='')
+			print_col('bwhite'); print(' '),
+			print_col('bdefault'); print('');
 			if show_links and len(entry['link_id']):
 				partners = dbGetLinkPartnerStrings(conn_db, entry['link_id'], show_link_descr)
 				printList(partners, len_prefix, 'bblue')
@@ -759,11 +762,11 @@ def printEntry(entry, mode = 2, show_ts = False, show_links = False, conn_db = N
 				notes = dbGetNoteStrings(conn_db, entry['link_id'], show_note_descr)
 				printList(notes, len_prefix, 'bdefault', 'yellow', show_note_descr)
 	else:
-		print entry['hashid'], entry['fname'], entry['ts'], entry['name'], entry['tags']
+		print(entry['hashid'], entry['fname'], entry['ts'], entry['name'], entry['tags'])
 
 def editFinalizeName(entry, name):
 	if (name != entry['name']):
-		print name
+		print(name)
 		entry['name'] = name
 		return True
 	return False
@@ -776,7 +779,7 @@ def editFinalizeTags(entry, tag_str):
 		else:
 			tags[tag.split(':')[0]] = tag.split(':')[1]
 	if (entry['tags'] != tags):
-		print flattags(tags)
+		print(flattags(tags))
 		entry['tags'] = tags
 		return True
 	return False
@@ -784,8 +787,8 @@ def editFinalizeTags(entry, tag_str):
 def editEntry(entry, ename = True, etags = True, nameFirst = True):
 	try:
 		if (ename and etags):
-			print entry['name']
-			print flattags(entry['tags'])
+			print(entry['name'])
+			print(flattags(entry['tags']))
 			fmt_str = u'<{}><{}>'
 			if (nameFirst):
 				entry_str = fmt_str.format(entry['name'], ','.join(flattags(entry['tags'])))
@@ -800,14 +803,14 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 
 		cpos = 0
 		it = 0
-		print u' - {}'.format(entry_str)
+		print(u' - {}'.format(entry_str))
 		prefix = ' : '
 		print_col('yellow')
 		while 1:
 			# http://www.termsys.demon.co.uk/vtansi.htm
-			print '\x1B[2K', # Erase line
-			print u'\r{}{}\r'.format(prefix, entry_str),
-			print '\r\x1B[{}C'.format(cpos + len(prefix)),
+			print('\x1B[2K', end='') # Erase line
+			print(u'\r{}{}\r'.format(prefix, entry_str), end='')
+			print('\r\x1B[{}C'.format(cpos + len(prefix)), end='')
 			it = it+1
 			inp = getch()
 
@@ -832,7 +835,7 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 					entry_str = entry_str[0:cpos] + ''.join(inp) + entry_str[cpos:]
 					cpos = cpos + 1
 			else:
-				print inp
+				print(inp)
 	except:
 		traceback.print_exc()
 		e = sys.exc_info()[0]
@@ -840,10 +843,10 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 		return False
 	finally:
 		print_col('default')
-		print ''
+		print('')
 
 	if (ename and etags):
-		re_pat = re.compile(ur'\<([^\>]*)\>')
+		re_pat = re.compile(r'\<([^\>]*)\>')
 		re_mat = re.findall(re_pat, entry_str)
 		if (len(re_mat) == 2):
 			modn = editFinalizeName(entry, re_mat[0 if nameFirst else 1])
@@ -858,7 +861,7 @@ def editEntry(entry, ename = True, etags = True, nameFirst = True):
 
 def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 	def cprint(str, lpos):
-		print str,;	return lpos + len(str);
+		print(str, end='');	return lpos + len(str);
 	if largv_has(['-simple_edit']):
 		return editEntry(entry, ename, etags, nameFirst)
 	try:
@@ -960,7 +963,7 @@ def editEntry2(entry, ename = True, etags = True, nameFirst = True):
 		return False
 	finally:
 		print_col('default')
-		print ''
+		print('')
 	return False
 
 def editUpdateEntry(conn, entry, ename, etags, nameFirst = True):
@@ -1003,8 +1006,8 @@ def addEntry(sess, conn, fpath, entry, copy):
 				if (thashid == entry['hashid']):
 					addIgnored(sess, 'ignored', fpath, entry)
 					return None
-				print 'File name clash [{}], edit? [ y(es), n(o) ]:'.format(entry['fname']),
-				inp = raw_input()
+				print('File name clash [{}], edit? [ y(es), n(o) ]:'.format(entry['fname']), end='')
+				inp = input()
 
 				if (inp.lower() in ['y', 'yes']):
 					if (editEntry(entry, True, False)):
@@ -1088,7 +1091,7 @@ def extractBib(name):
 		out = ''; err = '';
 	#print unistr(' '.join(args)), out, err
 	if len(err):
-		print_col('red'); print err; print_col('default');
+		print_col('red'); print(err); print_col('default');
 	#print bibToDict(out)
 	if (len(out) == 0):
 		try:
@@ -1153,7 +1156,7 @@ def sessPrintFiles(sess):
 	fnames = sessGetFiles(sess)
 	ni = 0
 	for fname in fnames:
-		print_col('yellow'); print ' {}. [{}]'.format(ni, fname); print_col('default');
+		print_col('yellow'); print(' {}. [{}]'.format(ni, fname)); print_col('default');
 		ni = ni+1
 
 def sessGetOpenFileEntries(conn, do_print):
@@ -1166,7 +1169,7 @@ def sessGetOpenFileEntries(conn, do_print):
 		entry = dbGetEntryByFname(conn, name)
 		if entry is not None:
 			if do_print:
-				print_col('yellow'); print ' {}. [{}]'.format(ni, name); print_col('default');
+				print_col('yellow'); print(' {}. [{}]'.format(ni, name)); print_col('default');
 			all_entries.append(entry)
 			ni = ni+1
 		#else:
@@ -1185,7 +1188,7 @@ def enter_assisted_input():
 
 	def checkPlatMac():
 		if os.name != 'posix':
-			print_col('red'); print 'Not supported on windows yet'; print_col('default');
+			print_col('red'); print('Not supported on windows yet'); print_col('default');
 			return False
 		return True
 
@@ -1319,7 +1322,7 @@ def enter_assisted_input():
 		for el in elines:
 			if el not in ulines:
 				ulines.append(el)
-		print_col('red'); print '\n'.join(ulines); print_col('default');
+		print_col('red'); print('\n'.join(ulines)); print_col('default');
 
 	def textSearchPrint(ei, e, elines, lines):
 		printErrLines(ei, e, elines)
@@ -1328,7 +1331,7 @@ def enter_assisted_input():
 				showEntry(ei, e)
 			for li in range(len(lines)):
 				print_col('cyan' if li%2 else 'magenta')
-				print ' {}. {}'.format(li+1, lines[li])
+				print(' {}. {}'.format(li+1, lines[li]))
 			print_col('default')
 
 	def textSearchEntries(entries, phrase, nthreads = 1):
@@ -1347,7 +1350,7 @@ def enter_assisted_input():
 			def chunks(l, n):
 				n = max(1, n)
 				return [l[i:i + n] for i in range(0, len(l), n)]
-			print ' Searching...'
+			print(' Searching...')
 			#print ' Using {} threads...'.format(nthreads)
 			eis = range(len(entries))
 			teis = chunks(eis, int(math.ceil(float(len(eis))/float(nthreads))))
@@ -1374,7 +1377,7 @@ def enter_assisted_input():
 	def listEntries(entries, show_ts=False, show_links = False, conn_db = None, show_notes = False):
 		for ie in range(len(entries)):
 			prefix = '{}. '.format(ie+1)
-			print prefix,
+			print(prefix, end='')
 			printEntry(entries[ie], show_ts=show_ts, show_links=show_links, conn_db = conn_db, len_prefix = len(prefix), show_notes = show_notes);
 
 	def handle_cd(filters, entries, time_based, newentries, filt, cd_time_based, show_links, conn_db, show_notes):
@@ -1384,7 +1387,7 @@ def enter_assisted_input():
 			if (len( newentries ) <= 24):
 				listEntries( entries[-1], show_ts=cd_time_based, show_links = show_links, conn_db = conn_db, show_notes = show_notes )
 		else:
-			print ' empty...'
+			print(' empty...')
 
 	def bibExtractThread(title, index, bib_out, bibi):
 		try:
@@ -1445,10 +1448,10 @@ def enter_assisted_input():
 							tags[etag] = ''
 					tkeys = sorted(tags.keys())
 					for it in range(len(tkeys)):
-						print '{}, '.format(tkeys[it]),
+						print('{}, '.format(tkeys[it]), end='')
 						if (it % 10 == 0 and it != 0):
-							print ''
-					print '\n{} tags\n'.format(len(tkeys))
+							print('')
+					print('\n{} tags\n'.format(len(tkeys)))
 				elif ((cmd == 'cd' and len(input_splt) == 1)
 						or (cmd == 'cd' and input_splt[1] == '..')
 						or cmd == '..'
@@ -1477,12 +1480,12 @@ def enter_assisted_input():
 							newentries = sortEntries( filterEntries(entries[-1], filter2, conn), cd_time_based )
 							handle_cd(filters, entries, time_based, newentries, filter2[0], cd_time_based, cur_show_links, conn, cur_show_notes)
 							if (len(newentries) == 0 and (cmd == 'cd' or cmd == 'c') and repeat_count == 0):
-								print ' trying a search instead...'
+								print(' trying a search instead...')
 								repeat_count = 1; repeat = True;
 							else:
 								vt_hist_add(cmd_hist['list'], inp)
 						else:
-							print ' empty...'
+							print(' empty...')
 							if ((cmd == 'cd' or cmd == 'c') and repeat_count == 0):
 								repeat_count = 1; repeat = True;
 				elif (cmd == 'cn' and len(input_splt) >= 2):
@@ -1500,7 +1503,7 @@ def enter_assisted_input():
 						newentries = sortEntries( filterEntries(entries[-1], [filter], conn), cd_time_based )
 						handle_cd(filters, entries, time_based, newentries, filter, cd_time_based, cur_show_links, conn, cur_show_notes)
 					else:
-						print ' invalid pattern...'
+						print(' invalid pattern...')
 				elif (cmd == 'cl'):
 					filter = {'type':'linked', 'pat':'linked'}
 					cd_time_based = True if ('t' in input_splt) else False if ('-t' in input_splt) else cur_time_based
@@ -1517,7 +1520,7 @@ def enter_assisted_input():
 						if (entry['link_id'] != lid):
 							old_lid = entry['link_id']; entry['link_id'] = lid;
 							dbUpdateEntryLinkId(conn, entry)
-							print ' {} (was {})'.format(lid, old_lid)
+							print(' {} (was {})'.format(lid, old_lid))
 				elif (cmd == 'link'):
 					if (len(input_splt) >= 4):
 						link_from = input_splt[1]; link_type = input_splt[2]; link_to = input_splt[3]; link_desc = ' '.join(input_splt[4:]);
@@ -1531,12 +1534,12 @@ def enter_assisted_input():
 				elif (cmd == 'links'):
 					if (len(input_splt) == 2):
 							ei = int(input_splt[1])-1; entry = entries[-1][ei];
-							prefix = ' '; print prefix;
+							prefix = ' '; print(prefix);
 							printEntry(entry, show_ts=cur_time_based, show_links=True, conn_db = conn, len_prefix = len(prefix), show_link_descr = True)
 				elif (cmd == 'notes'):
 					if (len(input_splt) == 2):
 							ei = int(input_splt[1])-1; entry = entries[-1][ei];
-							prefix = ' '; print prefix;
+							prefix = ' '; print(prefix);
 							printEntry(entry, show_ts=cur_time_based, conn_db = conn, len_prefix = len(prefix), show_notes = True, show_note_descr = True)
 				elif (cmd == 'e' or cmd == 'en' or cmd == 'et'):
 					if (len(input_splt) == 2):
@@ -1571,9 +1574,9 @@ def enter_assisted_input():
 						closeViewEntry(entry)
 				elif (cmd == 'cleanup'):
 					centries = [x for x in entries[-1] if ('c' not in x['extra']) ]
-					print 'There are {} entries to clean.'.format(len(centries))
+					print('There are {} entries to clean.'.format(len(centries)))
 					for ie in range(len(centries)):
-						print '{}. '.format(ie),
+						print('{}. '.format(ie), end='')
 						entry = centries[ie]
 						editUpdateEntry(conn, entry, True, True)
 						entry['extra'].append('c')
@@ -1610,14 +1613,14 @@ def enter_assisted_input():
 						entry = entries[-1][ei]
 						(elines, count) = textLengthEntry(entry)
 						printErrLines(ei, entry, elines)
-						print_col('green'); print ' {} words'.format(count); print_col('default');
+						print_col('green'); print(' {} words'.format(count)); print_col('default');
 				elif (cmd == 'figs'):
 					if (len(input_splt) == 2):
 						ei = int(input_splt[1])-1
 						entry = entries[-1][ei]
 						(elines, count) = textCountEntry(entry, 'figure')
 						printErrLines(ei, entry, elines)
-						print_col('green'); print ' ~{} figures'.format(count/2); print_col('default');
+						print_col('green'); print(' ~{} figures'.format(count/2)); print_col('default');
 				elif (cmd == 'f' or cmd == 'find'):
 					phrase = ' '.join(input_splt[1:])
 					nthreads = max(1, multiprocessing.cpu_count()-1)
@@ -1626,10 +1629,10 @@ def enter_assisted_input():
 					phrase = ' '.join(input_splt[1:])
 					matches = matchAllTags(phrase, entries[-1])
 					for it in range(len(matches)):
-							print '{}. {}, '.format(it+1, matches[it]),
+							print('{}. {}, '.format(it+1, matches[it]), end='')
 							if (it % 10 == 0 and it != 0):
-								print ''
-					print '\n{} tags\n'.format(len(matches))
+								print('')
+					print('\n{} tags\n'.format(len(matches)))
 				elif (cmd == 'remove' or cmd == 'delete'):
 					ei = int(input_splt[1])-1
 					entry = entries[-1][ei]
@@ -1647,7 +1650,7 @@ def enter_assisted_input():
 						bib_list = [entries[-1][ei]['name']]
 					else:
 						bib_list = [ ' '.join(input_splt[1:]) ]
-					print ' Extracting...'
+					print(' Extracting...')
 					bib_out = [None]*len(bib_list)
 					bib_threading = cmd.endswith('t') # Don't make scholar angry and think we are a bot
 					if bib_threading:
@@ -1658,23 +1661,23 @@ def enter_assisted_input():
 								t = threading.Thread(target=bibExtractThread, args=(bib_list[bibi], bibi+1, bib_out, bibi))
 								tinfo['thread'] = t; tinfos.append(tinfo); t.setDaemon(True); t.start();
 						bib_check = [False]*len(bib_out)
-						print ' ',
+						print(' ', end='')
 						while len([x for x in bib_check if x]) < len(bib_check):
 								for i in range(len(bib_check)):
 									if bib_check[i] == False and bib_out[i] != None:
-										bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+										bib_check[i] = True; print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print('{}'.format(i), end=''); print_col('default'); print(',', end=''); sys.stdout.flush();
 									time.sleep(0.5)
-						print '\n'
+						print('\n')
 						for tinfo in tinfos:
 							tinfo['thread'].join()
 					else:
-						print ' ',
+						print(' ', end='')
 						for bibi in range(len(bib_list)):
 							bibExtractThread(bib_list[bibi], bibi+1, bib_out, bibi)
 							i = bibi
-							print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print '{}'.format(i),; print_col('default'); print ',',; sys.stdout.flush();
+							print_col('red' if len(bib_out[i][0]) == 0 else 'green'); print('{}'.format(i), end=''); print_col('default'); print(',', end=''); sys.stdout.flush();
 							time.sleep(0.5)
-						print '\n'
+						print('\n')
 					for bibi in range(len(bib_out)):
 						bib_dict = bib_out[bibi][1]
 						in_words = bib_list[bibi].split()
@@ -1688,14 +1691,14 @@ def enter_assisted_input():
 								bib_dict['_@'] = 'misc'; bib_dict['_ref'] = 'c{}'.format(bibi+1); bib_dict['title'] = bib_list[bibi];
 							bib_dict['todo'] = 'true';
 							bib_out[bibi][0] = bibFromDict(bib_dict);
-						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print bib_out[bibi][0]; print_col('default'); print ',\n'
+						print_col('magenta' if len(out_words) == 0 else ('cyan' if bib_dict.get('todo') == 'true' else 'green'));  print(bib_out[bibi][0]); print_col('default'); print(',\n')
 						#out = "@misc{{c{}, title = {{ {} }} }, todo = {{true}}}".format(index, name)
 					#print '\n', ',\n\n'.join([x[0] for x in bib_out]), '\n'
 				elif cmd == 'csess':
 						sessGetOpenFileEntries(conn, True)
 				elif cmd == 'ssess':
 					if len(input_splt) == 1:
-						print_col('red'); print 'Please provide a session name'; print_col('default')
+						print_col('red'); print('Please provide a session name'); print_col('default')
 					else:
 						sess_entries = sessGetOpenFileEntries(conn, True)
 						descr = ' '.join(input_splt[2:]) if len(input_splt) >= 3 else ''
@@ -1704,12 +1707,12 @@ def enter_assisted_input():
 					if len(input_splt) == 2:
 						session = dbGetLastSessionWithName(conn, input_splt[1])
 						if session:
-							print_col('blue'); print ' {}'.format(session['ts'].strftime('%d-%b-%Y')); print_col('default');
+							print_col('blue'); print(' {}'.format(session['ts'].strftime('%d-%b-%Y'))); print_col('default');
 							sessPrintFiles(session)
 					else:
 						ni = 0
 						for name, count, last in dbGetSessionNames(conn):
-							print_col('green'); print ' {}. {} x {} ({})'.format(ni, name, count, last['ts'].strftime('%d-%b-%Y')); print_col('default'); ni = ni+1;
+							print_col('green'); print(' {}. {} x {} ({})'.format(ni, name, count, last['ts'].strftime('%d-%b-%Y'))); print_col('default'); ni = ni+1;
 				elif cmd == 'osess':
 					if len(input_splt) == 2:
 						session = dbGetLastSessionWithName(conn, input_splt[1])
@@ -1723,7 +1726,7 @@ def enter_assisted_input():
 									if fentry['fname'] not in open_files:
 										viewEntry(fentry); #time.sleep(0.5);
 								else:
-									print_col('red'); print ' Missing entry for [{}]'; print_col('default');
+									print_col('red'); print(' Missing entry for [{}]'); print_col('default');
 				elif cmd == 'fill_bib':
 					def doBibNotes(entries):
 						for ie in range(len(entries)):
@@ -1734,12 +1737,12 @@ def enter_assisted_input():
 								in_words = entry['name'].split()
 								out_words = bib_dict.get('title', '').split()
 								if len(in_words) == len(out_words):
-									print_col('green'); print u' [{}] -> [{}]'.format(unistr(entry['name']), unistr(bib_str)); print_col('default');
+									print_col('green'); print(u' [{}] -> [{}]'.format(unistr(entry['name']), unistr(bib_str))); print_col('default');
 									entry['bib'] = bib_str; dbUpdateEntryBib(conn, entry);
 								else:
 									entry['bib'] = 'n/a'; dbUpdateEntryBib(conn, entry);
-									print_col('red'); print u' [{}]'.format(unistr(entry['name'])); print_col('default');
-	 							time.sleep(0.5)
+									print_col('red'); print(u' [{}]'.format(unistr(entry['name']))); print_col('default');
+								time.sleep(0.5)
 					doBibNotes(entries[-1])
 				elif cmd == 'export':
 					def exportTagStar(tags):
@@ -1790,10 +1793,10 @@ def enter_assisted_input():
 								filtered_tags = exportFilterTags(entry['tags'])
 								of.write(u'{} | {} | {} | {} | {}\n'.format(ie+1, exportTagStar(entry['tags']), exportTbl(entry['name']), ', '.join(filtered_tags), exportFormatBib(entry['bib'])).encode('utf-8'))
 					else:
-						print_col('red'); print ' Missing output file'; print_col('default');
+						print_col('red'); print(' Missing output file'); print_col('default');
 		except:
 			#dbEndSession(conn)
-			print_col('red'); print ''; traceback.print_exc(); print_col('default');
+			print_col('red'); print(''); traceback.print_exc(); print_col('default');
 			e = sys.exc_info()[0]
 			#raise e
 	dbEndSession(conn)
@@ -1826,17 +1829,17 @@ def nameFind(conn, pat):
 	for e in entries:
 		if matchName(pat, e['name']):
 			printEntry(e)
-	print ''
+	print('')
 
 def tagList(conn):
 	entries = dbGetEntries(conn)
 	for e in entries:
 		printEntry(e)
-	print ''
+	print('')
 
 def tagRe():
-	p1 = re.compile(ur'\(([\w|,|\s|\-|\]|\[)]*)\)')
-	p2 = re.compile(ur'\[([\w|,|\s|\-)]*)\]')
+	p1 = re.compile(r'\(([\w|,|\s|\-|\]|\[)]*)\)')
+	p2 = re.compile(r'\[([\w|,|\s|\-)]*)\]')
 	return p1, p2
 
 def matchesRe(name, rec):
@@ -1871,23 +1874,23 @@ def tagImport(conn, ipath, updating):
 					tags = extractTagsFromFileName(fpath)
 					if (os.path.getsize(fpath) == 0 and fext != '.missing'):
 						if (updating == False):
-							print_col('cyan'); print fname; print_col('default');
+							print_col('cyan'); print(fname); print_col('default');
 					else:
 						entry = addFile(addFileSess, conn, fpath, tags, True)
 						if (entry):
 							printEntry(entry)
 						elif (updating == False):
-							print_col('red'); print fname; print_col('default');
+							print_col('red'); print(fname); print_col('default');
 							entry = dbGetEntryByHash(conn, genFileMD5Str(fpath, makeCleanFilename(fpath)))
 							if (entry):
-								print ' > ',
+								print(' > ', end='')
 								printEntry(entry)
 				else:
 					if (updating == False):
-						print_col('cyan'); print fname; print_col('default');
+						print_col('cyan'); print(fname); print_col('default');
 		else:
 			if (updating == False):
-				print_col('cyan'); print '{}/*'.format(dirName); print_col('default');
+				print_col('cyan'); print('{}/*'.format(dirName)); print_col('default');
 
 def printAndChoose(list, postindex = False, forceChoose = False):
 	if (len(list) == 0): return []
@@ -1895,12 +1898,12 @@ def printAndChoose(list, postindex = False, forceChoose = False):
 	for i in range(len(list)):
 		print_coli(gAltCols[i % len(gAltCols)])
 		if postindex:
-			print '. {} ({})'.format(list[i], i+1)
+			print('. {} ({})'.format(list[i], i+1))
 		else:
-			print '{}. {}'.format(i+1, list[i])
+			print('{}. {}'.format(i+1, list[i]))
 	print_col('default')
-	print '>',
-	input_str = raw_input()
+	print('>', end='')
+	input_str = input()
 	choices = []
 	if ('-' in input_str):
 		list = input_str.split('-')
@@ -1918,7 +1921,7 @@ def scanImport(conn, spath, time):
 	g_lastscan = (spath, time)
 	if os.name == 'nt':
 		# http://blogs.technet.com/b/heyscriptingguy/archive/2014/02/07/use-powershell-to-find-files-that-have-not-been-accessed.aspx
-		print_col('red'); print 'Not supported on windows yet'; print_col('default');
+		print_col('red'); print('Not supported on windows yet'); print_col('default');
 		return
 	exts = ['.pdf','.djvu','.epub']
 	args = ['find', '{}'.format(spath), '(']
@@ -1929,7 +1932,7 @@ def scanImport(conn, spath, time):
 	#print args
 	(out, err) = runPiped(args)
 	if (len(err)):
-		print_col('red'); print err; print_col('default');
+		print_col('red'); print(err); print_col('default');
 		return
 	lines = [x.strip() for x in out.split('\n') if (len(x.strip()))]
 	chosen = printAndChoose(lines, False, True)
@@ -1941,7 +1944,7 @@ def scanImport(conn, spath, time):
 		sess = 	{}
 		entry = addFile(sess, conn, fpath, tags, True)
 		if (len(sess)):
-			print sess
+			print(sess)
 		if (entry is not None):
 			editUpdateEntry(conn, entry, True, True, False)
 		else:
@@ -1953,7 +1956,7 @@ def tagCleanFromNames(conn):
 	def tagCleanFromString(entry, key):
 		cname = tagCleanFromName(entry[key])
 		if (cname != entry[key]):
-			print u'[{}] -> [{}]'.format(entry[key], cname)
+			print(u'[{}] -> [{}]'.format(entry[key], cname))
 			if (g_dry == False):
 				entry[key] = cname
 				if (key == 'fname'):
@@ -1965,13 +1968,13 @@ def tagCleanFromNames(conn):
 	for e in entries:
 		tagCleanFromString(e, 'fname')
 		tagCleanFromString(e, 'name')
-	print ''
+	print('')
 
 def normalizeNames(conn):
 	def normalizeString(entry, key):
 		cname = normalizeName(entry[key])
 		if (cname != entry[key]):
-			print u'[{}] -> [{}]'.format(entry[key], cname)
+			print(u'[{}] -> [{}]'.format(entry[key], cname))
 			if (g_dry == False):
 				entry[key] = cname
 				if (key == 'fname'):
@@ -1983,7 +1986,7 @@ def normalizeNames(conn):
 	for e in entries:
 		normalizeString(e, 'fname')
 		normalizeString(e, 'name')
-	print ''
+	print('')
 
 
 def main():
@@ -1995,7 +1998,7 @@ def main():
 	largv = sys.argv
 
 	#print sys.stdout.encoding
-	print_col('default'); print '';
+	print_col('default'); print('');
 
 	if largv_has(['-db']):
 		g_dbpath = largv_get(['-db'], None)
@@ -2036,9 +2039,9 @@ def main():
 		time = largv_get(['-time'], '1h')
 		conn = dbStartSession(g_dbpath); scanImport(conn, spath, time); dbEndSession(conn);
 	elif largv_has(['-test_normalize']):
-		print normalizeName(largv_get(['-test_normalize'], ''))
+		print(normalizeName(largv_get(['-test_normalize'], '')))
 	elif largv_has(['-test_clean']):
-		print cleanFilename(largv_get(['-test_clean'], ''))
+		print(cleanFilename(largv_get(['-test_clean'], '')))
 	elif largv_has(['-db_upgrade']):
 			conn = dbStartSession(g_dbpath); dbUpgrade(conn); dbEndSession(conn);
 	else:
